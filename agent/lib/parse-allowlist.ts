@@ -1,25 +1,12 @@
 import { z } from 'zod';
 
-/** The env var holding the allowlist: a JSON map of Telegram user id to display name. */
-export const ALLOWLIST_ENV = 'MAJORDOMO_ALLOWED_USERS';
-
-/** A household member permitted to talk to the bot. */
-export interface AllowedUser {
-  /** Display name as written in the allowlist. */
-  readonly name: string;
-  /** Radarr/Sonarr tag label for this person: the lowercased name. */
-  readonly tag: string;
-}
+import type { AllowedUser } from './allowed-user';
+import { ALLOWLIST_ENV } from './allowlist-env';
 
 const allowlistSchema = z.record(
   z.string().regex(/^\d+$/u, 'Telegram user ids are numeric strings'),
   z.string().trim().min(1, 'display name must not be empty'),
 );
-
-/** Read-only view of the env vars this module needs. */
-export type AllowlistEnv = Readonly<
-  Partial<Record<typeof ALLOWLIST_ENV, string>>
->;
 
 /**
  * Parses the allowlist JSON. Throws when the value is missing, is not JSON, or
@@ -51,14 +38,3 @@ export const parseAllowlist = (
   }
   return users;
 };
-
-/**
- * Looks up a Telegram user id in the allowlist. Returns `null` for anyone not
- * listed. Throws on a missing or malformed allowlist so misconfiguration fails
- * closed at first use rather than silently admitting nobody.
- */
-export const lookupUser = (
-  telegramUserId: string,
-  env: AllowlistEnv = process.env,
-): AllowedUser | null =>
-  parseAllowlist(env[ALLOWLIST_ENV]).get(telegramUserId) ?? null;

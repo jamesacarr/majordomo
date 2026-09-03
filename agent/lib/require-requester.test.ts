@@ -1,15 +1,17 @@
 import type { SessionContext } from 'eve/tools';
 import { describe, expect, it } from 'vitest';
 
-import type { RequesterContext } from './principal';
-import { ALLOWLIST_AUTHENTICATOR, requireRequester } from './principal';
+import { ALLOWLIST_AUTHENTICATOR } from './allowlist-authenticator';
+import { requireRequester } from './require-requester';
 
 // eve does not export this type by name; derive it from the session context tools receive.
 type SessionAuthContext = NonNullable<
   SessionContext['session']['auth']['current']
 >;
 
-const contextWith = (current: SessionAuthContext | null): RequesterContext => ({
+const contextWith = (
+  current: SessionAuthContext | null,
+): Pick<SessionContext, 'session'> => ({
   session: {
     auth: { current, initiator: current },
     id: 'session-1',

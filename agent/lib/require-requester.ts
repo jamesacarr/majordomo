@@ -1,22 +1,13 @@
 import type { SessionContext } from 'eve/tools';
 
-import type { AllowedUser } from './allowlist';
+import type { AllowedUser } from './allowed-user';
+import { ALLOWLIST_AUTHENTICATOR } from './allowlist-authenticator';
+import type { Env } from './env';
 
-/** `authenticator` value stamped on sessions the Telegram allowlist admitted. */
-export const ALLOWLIST_AUTHENTICATOR = 'majordomo-allowlist';
+/** The part of the runtime context this function reads. Tools pass their `ctx` straight in. */
+type RequesterContext = Pick<SessionContext, 'session'>;
 
-/** The person a tool is acting for. Same shape as an allowlist entry. */
-export type Requester = AllowedUser;
-
-/** Env vars consulted for the development fallback. */
-export type PrincipalEnv = Readonly<
-  Partial<Record<'EVE_DEV' | 'MAJORDOMO_DEV_USER', string>>
->;
-
-/** The part of the runtime context this module reads. Tools pass their `ctx` straight in. */
-export type RequesterContext = Pick<SessionContext, 'session'>;
-
-const fromSession = (ctx: RequesterContext): Requester | null => {
+const fromSession = (ctx: RequesterContext): AllowedUser | null => {
   const current = ctx.session.auth.current;
   if (current?.authenticator !== ALLOWLIST_AUTHENTICATOR) {
     return null;
@@ -28,7 +19,7 @@ const fromSession = (ctx: RequesterContext): Requester | null => {
   return { name, tag };
 };
 
-const fromDevEnv = (env: PrincipalEnv): Requester | null => {
+const fromDevEnv = (env: Env): AllowedUser | null => {
   const name = env.MAJORDOMO_DEV_USER?.trim();
   if (env.EVE_DEV !== '1' || !name) {
     return null;
@@ -46,8 +37,8 @@ const fromDevEnv = (env: PrincipalEnv): Requester | null => {
  */
 export const requireRequester = (
   ctx: RequesterContext,
-  env: PrincipalEnv = process.env,
-): Requester => {
+  env: Env = process.env,
+): AllowedUser => {
   const requester = fromSession(ctx) ?? fromDevEnv(env);
   if (requester === null) {
     throw new Error(

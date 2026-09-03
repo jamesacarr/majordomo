@@ -4,24 +4,22 @@ import type {
   TelegramMessage,
 } from 'eve/channels/telegram';
 
-import type { AllowlistEnv } from '../allowlist';
-import { lookupUser } from '../allowlist';
-import { ALLOWLIST_AUTHENTICATOR } from '../principal';
-
-/** Signature eve expects for `telegramChannel({ onMessage })`. */
-export type OnMessage = (
-  ctx: TelegramContext,
-  message: TelegramMessage,
-) => Promise<TelegramInboundResult>;
+import { ALLOWLIST_AUTHENTICATOR } from '../allowlist-authenticator';
+import type { Env } from '../env';
+import { lookupUser } from '../lookup-user';
 
 /**
- * Builds the inbound message hook. Only private chats from allowlisted users
- * reach the agent; everything else is dropped without a reply, so strangers
- * and groups never learn the bot exists. Returning `null` is eve's "drop".
+ * Builds the inbound message hook for `telegramChannel({ onMessage })`. Only
+ * private chats from allowlisted users reach the agent; everything else is
+ * dropped without a reply, so strangers and groups never learn the bot exists.
+ * Returning `null` is eve's "drop".
  */
 export const createOnMessage =
-  (env: AllowlistEnv = process.env): OnMessage =>
-  async (ctx, message) => {
+  (env: Env = process.env) =>
+  async (
+    ctx: TelegramContext,
+    message: TelegramMessage,
+  ): Promise<TelegramInboundResult> => {
     if (message.chat.type !== 'private') {
       return null;
     }

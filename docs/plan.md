@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-09-03T22:26:56Z
+updated_at: 2026-09-03T22:45:57Z
 status: draft
 ---
 
@@ -75,12 +75,21 @@ agent/
     get_media_recommendations.ts
     request_media.ts            approval: always()
     list_media_requests.ts
-  lib/                          all logic lives here; tests are colocated as *.test.ts
-    allowlist.ts                parse + lookup MAJORDOMO_ALLOWED_USERS
-    principal.ts                read requester name/tag from ctx, fail if absent
+  lib/                          all logic lives here; one export per file, named after it
+    env.ts                      Env type: injectable view of process.env
+    allowed-user.ts             AllowedUser type: { name, tag }
+    allowlist-env.ts            ALLOWLIST_ENV = "MAJORDOMO_ALLOWED_USERS"
+    allowlist-authenticator.ts  ALLOWLIST_AUTHENTICATOR stamped on admitted sessions
+    parse-allowlist.ts          parseAllowlist: JSON -> Map<userId, AllowedUser>, throws if bad
+    lookup-user.ts              lookupUser(telegramUserId): AllowedUser | null
+    require-requester.ts        requireRequester(ctx): name/tag from session, dev fallback
     telegram/
-      on-message.ts             the onMessage handler: private chats + allowlist -> auth
-      deliver.ts                message.completed handler: HTML escaping, plain-text fallback
+      create-on-message.ts      createOnMessage: private chats + allowlist -> auth
+      bold-tag.ts               BOLD_TAG regex shared by render and strip
+      render-telegram-html.ts   renderTelegramHtml: escape all but <b>
+      strip-telegram-html.ts    stripTelegramHtml: plain-text fallback body
+      is-telegram-bad-request.ts  isTelegramBadRequest: detect eve's HTTP 400 send error
+      on-message-completed.ts   onMessageCompleted: HTML send, plain-text retry on 400
     seerr/
       client.ts                 fetch wrapper with X-Api-Key
       types.ts                  hand-written types for the fields we use
@@ -105,7 +114,7 @@ Adding a future capability (say lighting) means: `lib/lighting/` with colocated 
 
 Tests sit next to the code as `*.test.ts`. eve discovers every file under `agent/tools/`, `agent/channels/`, `agent/instructions/`, `agent/skills/`, and `agent/schedules/`, so a test file there breaks the build: `eve build` rejects `agent/tools/probe.test.ts` with "Tool filename \"probe.test\" is not a legal tool name" (verified on eve 0.50.0 on 2026-09-03). `agent/lib/` is not discovered, so tests there are safe.
 
-The consequence is a rule: files in the discovered directories only bind eve definitions (`defineTool`, `telegramChannel`) to functions exported from `lib/`. Logic and its tests live in `lib/`. The thin binding files are covered by evals, which exercise the real tool registration. Vitest's default `include` glob already matches these, and Biome covers `agent/**`.
+The consequence is a rule: files in the discovered directories only bind eve definitions (`defineTool`, `telegramChannel`) to functions exported from `lib/`. Logic and its tests live in `lib/`. Each `lib/` file has one export, and the file is named after it in kebab-case (`requireRequester` lives in `require-requester.ts`, with `require-requester.test.ts` beside it). Types and constants follow the same rule. The thin binding files are covered by evals, which exercise the real tool registration. Vitest's default `include` glob already matches these, and Biome covers `agent/**`.
 
 ### Scope restriction
 
@@ -141,10 +150,10 @@ Input: `{ mine?: boolean, filter?: "pending" | "approved" | "available" | "proce
 
 - `onMessage` returning `null` drops the update with no reply. `ctx.telegram` is available inside `onMessage` if a reply is ever wanted.
 - `SessionAuthContext.attributes` values must be strings or string arrays.
-- Tools read the caller via `ctx.session.auth.current?.attributes.<key>`. Sessions started from the HTTP channel (dev TUI, evals) will not carry the Telegram attributes, so `lib/principal.ts` falls back to `MAJORDOMO_DEV_USER` only when `EVE_DEV=1`, and fails otherwise.
+- Tools read the caller via `ctx.session.auth.current?.attributes.<key>`. Sessions started from the HTTP channel (dev TUI, evals) will not carry the Telegram attributes, so `lib/require-requester.ts` falls back to `MAJORDOMO_DEV_USER` only when `EVE_DEV=1`, and fails otherwise.
 - Built-in tools are disabled per slot by exporting `disableTool()` from `agent/tools/<slug>.ts`. A typo in the slug fails the build.
 - eve replays interrupted tool steps, so `request_media` must tolerate a re-run: the availability check plus Seerr's own duplicate rejection cover this.
-- Default Telegram delivery sends plain text with no `parse_mode`. `lib/telegram/deliver.ts` replaces it with an HTML send and a plain-text fallback; the instructions allow `<b>` and nothing else.
+- Default Telegram delivery sends plain text with no `parse_mode`. `lib/telegram/on-message-completed.ts` replaces it with an HTML send and a plain-text fallback; the instructions allow `<b>` and nothing else.
 - `TelegramMessageBody` omits `parse_mode`, but eve spreads the body into `sendMessage` unchanged, so a wider object type passes it through. `channel.telegram.post` keeps the 4096-character split.
 - Missing `TELEGRAM_WEBHOOK_SECRET_TOKEN` or `TELEGRAM_BOT_TOKEN` is not a build or boot error. Verification fails per request with a logged warning and a 401; sends throw when first attempted.
 - eve does not call `setWebhook`; it is a one-off curl in the runbook.
@@ -212,12 +221,12 @@ Verify: `pnpm build` succeeds and `eve dev` shows only `ask_question` in the too
 
 Read first: `channels/telegram.mdx`, `channels/overview.mdx`, and the `TelegramInboundResult` type in `node_modules/eve/dist/src/public/channels/telegram/telegramChannel.d.ts`.
 
-- `agent/lib/allowlist.ts`: parse `MAJORDOMO_ALLOWED_USERS` (`{"123456789": "Alice"}`) with zod, expose `lookupUser(telegramUserId)` returning `{ name, tag }` where `tag` is the lowercased name. Throw at first use if the env var is missing or malformed.
-- `agent/lib/telegram/on-message.ts`: `onMessage` handler that drops non-private chats and unknown users. For known users, return `auth` with `principalId: telegram:<id>`, `principalType: "user"`, `authenticator: "majordomo-allowlist"`, attributes `{ user_id, chat_id, name, tag }`. Set `title` to the user's name for the run.
+- `agent/lib/parse-allowlist.ts` and `agent/lib/lookup-user.ts`: parse `MAJORDOMO_ALLOWED_USERS` (`{"123456789": "Alice"}`) with zod, expose `lookupUser(telegramUserId)` returning `{ name, tag }` where `tag` is the lowercased name. Throw at first use if the env var is missing or malformed.
+- `agent/lib/telegram/create-on-message.ts`: `onMessage` handler that drops non-private chats and unknown users. For known users, return `auth` with `principalId: telegram:<id>`, `principalType: "user"`, `authenticator: "majordomo-allowlist"`, attributes `{ user_id, chat_id, name, tag }`. Set `title` to the user's name for the run.
 - `agent/channels/telegram.ts`: `telegramChannel({ onMessage, events })`. No `botUsername`: eve only uses it for group mention detection, and groups are dropped.
-- `agent/lib/telegram/deliver.ts`: a `message.completed` handler that escapes `&`, `<`, `>` outside a whitelist of `<b>`/`</b>` tags, posts with `parse_mode: "HTML"`, and on a Telegram 400 re-posts the tag-stripped plain text. Colocated tests for the escaping and the fallback.
+- `agent/lib/telegram/on-message-completed.ts` (with `render-telegram-html.ts`, `strip-telegram-html.ts`, `is-telegram-bad-request.ts`): a `message.completed` handler that escapes `&`, `<`, `>` outside a whitelist of `<b>`/`</b>` tags, posts with `parse_mode: "HTML"`, and on a Telegram 400 re-posts the tag-stripped plain text. Colocated tests for the escaping and the fallback.
 - Update `agent/instructions/10-core.md`: bold titles with `<b>`, no other markup.
-- `agent/lib/principal.ts`: `requireRequester(ctx)` returns `{ name, tag }` from session attributes, with the `EVE_DEV` fallback described above.
+- `agent/lib/require-requester.ts`: `requireRequester(ctx)` returns `{ name, tag }` from session attributes, with the `EVE_DEV` fallback described above.
 
 Tests (colocated in `lib/`): allowlist parsing, rejection of malformed JSON, `onMessage` dropping groups and strangers, attribute shape for a known user, `requireRequester` behaviour with and without attributes and in dev mode.
 

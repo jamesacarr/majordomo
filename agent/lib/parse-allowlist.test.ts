@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { ALLOWLIST_ENV, lookupUser, parseAllowlist } from './allowlist';
+import { ALLOWLIST_ENV } from './allowlist-env';
+import { parseAllowlist } from './parse-allowlist';
 
 describe('parseAllowlist', () => {
   it('maps each Telegram user id to a name and a lowercased tag', () => {
@@ -48,27 +49,6 @@ describe('parseAllowlist', () => {
   it('names the offending key in the error', () => {
     expect(() => parseAllowlist('{"123":"Alice","456":""}')).toThrow(
       'at "456"',
-    );
-  });
-});
-
-describe('lookupUser', () => {
-  const env = { [ALLOWLIST_ENV]: '{"123456789":"Alice"}' };
-
-  it('returns the allowlisted user', () => {
-    expect(lookupUser('123456789', env)).toEqual({
-      name: 'Alice',
-      tag: 'alice',
-    });
-  });
-
-  it('returns null for an id that is not listed', () => {
-    expect(lookupUser('555', env)).toBeNull();
-  });
-
-  it('throws rather than returning null when the allowlist is missing', () => {
-    expect(() => lookupUser('123456789', {})).toThrow(
-      `${ALLOWLIST_ENV} is not set`,
     );
   });
 });

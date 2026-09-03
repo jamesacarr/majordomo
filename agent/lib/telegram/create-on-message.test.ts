@@ -1,9 +1,9 @@
 import type { TelegramContext, TelegramMessage } from 'eve/channels/telegram';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ALLOWLIST_ENV } from '../allowlist';
-import { ALLOWLIST_AUTHENTICATOR } from '../principal';
-import { createOnMessage } from './on-message';
+import { ALLOWLIST_AUTHENTICATOR } from '../allowlist-authenticator';
+import { ALLOWLIST_ENV } from '../allowlist-env';
+import { createOnMessage } from './create-on-message';
 
 const env = { [ALLOWLIST_ENV]: '{"123456789":"Alice"}' };
 
