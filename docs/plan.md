@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-09-03T22:59:01Z
+updated_at: 2026-09-03T23:07:45Z
 status: draft
 ---
 
@@ -75,17 +75,15 @@ agent/
     get_media_recommendations.ts
     request_media.ts            approval: always()
     list_media_requests.ts
-  lib/                          all logic lives here; one export per file, named after it
-    env.ts                      Env type: injectable view of process.env
-    allowed-user.ts             AllowedUser type: { name, tag }
-    allowlist-env.ts            ALLOWLIST_ENV = "MAJORDOMO_ALLOWED_USERS"
-    allowlist-authenticator.ts  ALLOWLIST_AUTHENTICATOR stamped on admitted sessions
+  lib/                          all logic lives here; one function per file, named after it
+    constants.ts                ALLOWLIST_ENV, ALLOWLIST_AUTHENTICATOR
+    types.ts                    Env (injectable process.env view), AllowedUser { name, tag }
     parse-allowlist.ts          parseAllowlist: JSON -> Map<userId, AllowedUser>, throws if bad
     lookup-user.ts              lookupUser(telegramUserId): AllowedUser | null
     require-requester.ts        requireRequester(ctx): name/tag from session, dev fallback
     telegram/
       create-on-message.ts      createOnMessage: private chats + allowlist -> auth
-      bold-tag.ts               BOLD_TAG regex shared by render and strip
+      constants.ts              BOLD_TAG regex shared by render and strip
       render-html.ts            renderHtml: escape all but <b>
       strip-html.ts             stripHtml: plain-text fallback body
       is-bad-request.ts         isBadRequest: detect eve's HTTP 400 send error
@@ -114,7 +112,7 @@ Adding a future capability (say lighting) means: `lib/lighting/` with colocated 
 
 Tests sit next to the code as `*.test.ts`. eve discovers every file under `agent/tools/`, `agent/channels/`, `agent/instructions/`, `agent/skills/`, and `agent/schedules/`, so a test file there breaks the build: `eve build` rejects `agent/tools/probe.test.ts` with "Tool filename \"probe.test\" is not a legal tool name" (verified on eve 0.50.0 on 2026-09-03). `agent/lib/` is not discovered, so tests there are safe.
 
-The consequence is a rule: files in the discovered directories only bind eve definitions (`defineTool`, `telegramChannel`) to functions exported from `lib/`. Logic and its tests live in `lib/`. Each `lib/` file has one export, and the file is named after it in kebab-case (`requireRequester` lives in `require-requester.ts`, with `require-requester.test.ts` beside it). Types and constants follow the same rule. The thin binding files are covered by evals, which exercise the real tool registration. Vitest's default `include` glob already matches these, and Biome covers `agent/**`.
+The consequence is a rule: files in the discovered directories only bind eve definitions (`defineTool`, `telegramChannel`) to functions exported from `lib/`. Logic and its tests live in `lib/`. Each function lives in its own `lib/` file named after it in kebab-case (`requireRequester` in `require-requester.ts`, with `require-requester.test.ts` beside it), without repeating the folder name (`lib/telegram/render-html.ts` exports `renderHtml`). Constants share a `constants.ts` and types a `types.ts` per directory. The thin binding files are covered by evals, which exercise the real tool registration. Vitest's default `include` glob already matches these, and Biome covers `agent/**`.
 
 ### Scope restriction
 

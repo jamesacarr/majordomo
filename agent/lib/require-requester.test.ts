@@ -1,7 +1,7 @@
 import type { SessionContext } from 'eve/tools';
 import { describe, expect, it } from 'vitest';
 
-import { ALLOWLIST_AUTHENTICATOR } from './allowlist-authenticator';
+import { ALLOWLIST_AUTHENTICATOR } from './constants';
 import { requireRequester } from './require-requester';
 
 // eve does not export this type by name; derive it from the session context tools receive.

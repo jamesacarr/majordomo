@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import type { AllowedUser } from './allowed-user';
-import { ALLOWLIST_ENV } from './allowlist-env';
+import { ALLOWLIST_ENV } from './constants';
+import type { AllowedUser } from './types';
 
 const allowlistSchema = z.record(
   z.string().regex(/^\d+$/u, 'Telegram user ids are numeric strings'),

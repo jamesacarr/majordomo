@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ALLOWLIST_ENV } from './allowlist-env';
+import { ALLOWLIST_ENV } from './constants';
 import { lookupUser } from './lookup-user';
 
 describe('lookupUser', () => {

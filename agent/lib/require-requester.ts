@@ -1,8 +1,7 @@
 import type { SessionContext } from 'eve/tools';
 
-import type { AllowedUser } from './allowed-user';
-import { ALLOWLIST_AUTHENTICATOR } from './allowlist-authenticator';
-import type { Env } from './env';
+import { ALLOWLIST_AUTHENTICATOR } from './constants';
+import type { AllowedUser, Env } from './types';
 
 /** The part of the runtime context this function reads. Tools pass their `ctx` straight in. */
 type RequesterContext = Pick<SessionContext, 'session'>;

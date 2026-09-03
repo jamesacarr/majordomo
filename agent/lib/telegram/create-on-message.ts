@@ -4,9 +4,9 @@ import type {
   TelegramMessage,
 } from 'eve/channels/telegram';
 
-import { ALLOWLIST_AUTHENTICATOR } from '../allowlist-authenticator';
-import type { Env } from '../env';
+import { ALLOWLIST_AUTHENTICATOR } from '../constants';
 import { lookupUser } from '../lookup-user';
+import type { Env } from '../types';
 
 /**
  * Builds the inbound message hook for `telegramChannel({ onMessage })`. Only

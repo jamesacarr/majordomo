@@ -1,4 +1,4 @@
-import { BOLD_TAG } from './bold-tag';
+import { BOLD_TAG } from './constants';
 
 const escapeHtml = (text: string): string =>
   text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');

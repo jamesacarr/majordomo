@@ -1,7 +1,6 @@
-import type { AllowedUser } from './allowed-user';
-import { ALLOWLIST_ENV } from './allowlist-env';
-import type { Env } from './env';
+import { ALLOWLIST_ENV } from './constants';
 import { parseAllowlist } from './parse-allowlist';
+import type { AllowedUser, Env } from './types';
 
 /**
  * Looks up a Telegram user id in the allowlist. Returns `null` for anyone not
