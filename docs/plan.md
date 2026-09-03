@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-09-03T07:58:13Z
+updated_at: 2026-09-03T22:26:56Z
 status: draft
 ---
 
@@ -17,6 +17,7 @@ Work through this document one MR at a time. Each MR section lists the eve doc p
 | Topic | Decision | Why |
 | --- | --- | --- |
 | Hosting | Vercel via `eve deploy`. | eve's default path. Telegram needs a public webhook URL either way. |
+| Deployment | The GitHub repo is connected to Vercel, which deploys `main` to production on every push. Preview deployments are off, so PRs run only GitHub Actions. Any env var a change reads must exist on the Vercel project before that change merges. | One environment keeps the free tier simple. eve builds and boots without `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET_TOKEN`; the webhook route logs a warning and answers 401 until they are set (verified on eve 0.50.0, 2026-09-03), so merging channel code before the secrets exist fails closed rather than breaking the deploy. |
 | Seerr endpoint | An existing Seerr 3.4.1 instance, published over https through a Cloudflare Tunnel that is independent of the agent. `SEERR_URL` points at it; the hostname lives only in `.env` and the Vercel project. | Already running. The agent only needs an API key. |
 | Seerr integration | Hand-authored typed tools over a thin `agent/lib/seerr` client. Not an OpenAPI connection. | The Seerr spec has ~200 operations. Exposing only four tools enforces "nothing unrelated" structurally, and the spec omits the `tags` field we need. |
 | Attribution | Every request carries two Radarr/Sonarr tags: a fixed `seerr` tag and the requester's display name from the allowlist (lowercased). Bot uses one Seerr API key. No Seerr user mapping. | Confirmed 2026-09-03. The `seerr` tag marks everything that came through Seerr regardless of who asked. |
@@ -28,7 +29,7 @@ Work through this document one MR at a time. Each MR section lists the eve doc p
 | Seerr approval | All bot requests are auto-approved, because they arrive through one admin API key. Seerr's per-user quotas and approval rules do not apply. | Confirmed 2026-09-03. Per-user rules, if ever wanted, would live in the bot. |
 | Bots | A separate development bot for `eve dev` and testing. The production bot keeps serving the previous implementation until go-live, when its token moves to Vercel. | Telegram allows one webhook or one poller per token, not both. |
 | Runtime | Node 24, the newest version Vercel's functions runtime supports. `engines.node`, `mise.toml`, and `@types/node` all say 24. | Verified 2026-09-03 against Vercel's supported-versions docs and `@vercel/build-utils`, which reject unknown versions at build time rather than falling back. Node 26 is only available in Vercel Sandboxes. |
-| Telegram formatting | Deliver replies with `parse_mode: HTML` and fall back to plain text if Telegram rejects the message. The model may use `<b>` for titles and nothing else. | eve's default handler sends plain text, but its `sendMessage` body is spread through, so a custom `message.completed` handler can add `parse_mode`. HTML needs only `<`, `>`, `&` escaped; MarkdownV2 needs a dozen characters escaped and the model will get it wrong. Implemented in MR 2. |
+| Telegram formatting | Deliver replies with `parse_mode: HTML` and fall back to plain text if Telegram rejects the message. The model may use `<b>` for titles and nothing else. | eve's default handler sends plain text, but its `sendMessage` body is spread through, so a custom `message.completed` handler can add `parse_mode`. HTML needs only `<`, `>`, `&` escaped; MarkdownV2 needs a dozen characters escaped and the model will get it wrong. Implemented in MR 2. eve's `sendMessage` wrapper throws a plain `Error` with the HTTP status in its message, so the 400 fallback matches on that text. |
 | Cost bounds | Session lifetime and token budgets in `agent.ts` `limits`, small tool outputs, and a spend cap on the AI Gateway. | See "Cost controls" below. |
 
 ## Decisions still open
@@ -62,11 +63,11 @@ agent/
   agent.ts                      model config only
   instructions.md               identity, tone, standing rules (scope refusal, one-line replies)
   instructions/
-    10-core.md                  how to talk on Telegram (plain text, no Markdown, 4096 cap)
+    10-core.md                  how to talk on Telegram (<b> titles only, no other markup, 4096 cap)
     20-media.md                 search -> disambiguate -> confirm -> request procedure
   channels/
     eve.ts                      HTTP channel for dev TUI and evals; [vercelOidc(), localDev()]
-    telegram.ts                 allowlist + auth mapping in onMessage
+    telegram.ts                 binds lib/telegram handlers to telegramChannel
   tools/
     bash.ts, read_file.ts, write_file.ts, web_fetch.ts, web_search.ts, agent.ts, todo.ts
                                 each exports disableTool()
@@ -78,7 +79,8 @@ agent/
     allowlist.ts                parse + lookup MAJORDOMO_ALLOWED_USERS
     principal.ts                read requester name/tag from ctx, fail if absent
     telegram/
-      on-message.ts             the onMessage handler, wired in by channels/telegram.ts
+      on-message.ts             the onMessage handler: private chats + allowlist -> auth
+      deliver.ts                message.completed handler: HTML escaping, plain-text fallback
     seerr/
       client.ts                 fetch wrapper with X-Api-Key
       types.ts                  hand-written types for the fields we use
@@ -142,7 +144,9 @@ Input: `{ mine?: boolean, filter?: "pending" | "approved" | "available" | "proce
 - Tools read the caller via `ctx.session.auth.current?.attributes.<key>`. Sessions started from the HTTP channel (dev TUI, evals) will not carry the Telegram attributes, so `lib/principal.ts` falls back to `MAJORDOMO_DEV_USER` only when `EVE_DEV=1`, and fails otherwise.
 - Built-in tools are disabled per slot by exporting `disableTool()` from `agent/tools/<slug>.ts`. A typo in the slug fails the build.
 - eve replays interrupted tool steps, so `request_media` must tolerate a re-run: the availability check plus Seerr's own duplicate rejection cover this.
-- Default Telegram delivery sends plain text with no `parse_mode`. Instructions must tell the model not to use Markdown.
+- Default Telegram delivery sends plain text with no `parse_mode`. `lib/telegram/deliver.ts` replaces it with an HTML send and a plain-text fallback; the instructions allow `<b>` and nothing else.
+- `TelegramMessageBody` omits `parse_mode`, but eve spreads the body into `sendMessage` unchanged, so a wider object type passes it through. `channel.telegram.post` keeps the 4096-character split.
+- Missing `TELEGRAM_WEBHOOK_SECRET_TOKEN` or `TELEGRAM_BOT_TOKEN` is not a build or boot error. Verification fails per request with a logged warning and a 401; sends throw when first attempted.
 - eve does not call `setWebhook`; it is a one-off curl in the runbook.
 
 ## Cost controls
@@ -180,8 +184,8 @@ Each MR must merge on its own and leave `pnpm lint:ci`, `pnpm typecheck`, and `p
 
 | # | MR | Status |
 | --- | --- | --- |
-| 1 | Repo hygiene and locked-down scaffold | todo |
-| 2 | Telegram channel with allowlist | todo |
+| 1 | Repo hygiene and locked-down scaffold | done (2026-09-03) |
+| 2 | Telegram channel with allowlist | in review |
 | 3 | Seerr client | todo |
 | 4 | Search and recommendation tools | todo |
 | 5 | Request tool with confirmation and tagging | todo |
@@ -210,14 +214,14 @@ Read first: `channels/telegram.mdx`, `channels/overview.mdx`, and the `TelegramI
 
 - `agent/lib/allowlist.ts`: parse `MAJORDOMO_ALLOWED_USERS` (`{"123456789": "Alice"}`) with zod, expose `lookupUser(telegramUserId)` returning `{ name, tag }` where `tag` is the lowercased name. Throw at first use if the env var is missing or malformed.
 - `agent/lib/telegram/on-message.ts`: `onMessage` handler that drops non-private chats and unknown users. For known users, return `auth` with `principalId: telegram:<id>`, `principalType: "user"`, `authenticator: "majordomo-allowlist"`, attributes `{ user_id, chat_id, name, tag }`. Set `title` to the user's name for the run.
-- `agent/channels/telegram.ts`: `telegramChannel({ botUsername, onMessage, events })`.
+- `agent/channels/telegram.ts`: `telegramChannel({ onMessage, events })`. No `botUsername`: eve only uses it for group mention detection, and groups are dropped.
 - `agent/lib/telegram/deliver.ts`: a `message.completed` handler that escapes `&`, `<`, `>` outside a whitelist of `<b>`/`</b>` tags, posts with `parse_mode: "HTML"`, and on a Telegram 400 re-posts the tag-stripped plain text. Colocated tests for the escaping and the fallback.
 - Update `agent/instructions/10-core.md`: bold titles with `<b>`, no other markup.
 - `agent/lib/principal.ts`: `requireRequester(ctx)` returns `{ name, tag }` from session attributes, with the `EVE_DEV` fallback described above.
 
 Tests (colocated in `lib/`): allowlist parsing, rejection of malformed JSON, `onMessage` dropping groups and strangers, attribute shape for a known user, `requireRequester` behaviour with and without attributes and in dev mode.
 
-Verify: unit tests pass. Local webhook testing is deferred to MR 6 because Telegram needs a public URL.
+Verify: unit tests, `pnpm build`, and `eve info --json` listing `POST /eve/v1/telegram`. Webhook testing is deferred to MR 6 because Telegram needs a public URL and a bot token. Before merging, set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET_TOKEN`, and `MAJORDOMO_ALLOWED_USERS` on the Vercel project (see the Deployment decision).
 
 ### MR 3: Seerr client
 
