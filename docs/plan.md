@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-09-03T07:52:58Z
+updated_at: 2026-09-03T07:58:13Z
 status: draft
 ---
 
@@ -187,6 +187,7 @@ Each MR must merge on its own and leave `pnpm lint:ci`, `pnpm typecheck`, and `p
 | 5 | Request tool with confirmation and tagging | todo |
 | 6 | Deployment runbook and first production deploy | todo |
 | 7 | Request listing | todo |
+| 8 | Posters and summaries on disambiguation and confirmation | todo |
 
 ### MR 1: Repo hygiene and locked-down scaffold
 
@@ -266,6 +267,21 @@ Verify: the smoke test checklist in the runbook, ticked off with the date. One w
 - `agent/lib/media/list-requests.ts` with colocated tests, bound by `agent/tools/list_media_requests.ts` per the contract.
 - Instructions: answer "what have I requested" and "what's the status of X" with this tool.
 - Evals for both phrasings.
+
+### MR 8: Posters and summaries on disambiguation and confirmation
+
+eve's default Telegram renderer shows a question as the prompt text plus one button per option label. Option `description` is not rendered, and nothing carries images. This MR replaces the `input.requested` handler so that choosing between titles, and confirming a request, shows each candidate's poster and a one-line summary.
+
+Read first: `channels/telegram.mdx` (event handler overrides), `concepts/state.md` (`defineState`), and the public exports in `node_modules/eve/dist/src/public/channels/telegram/index.d.ts` (`renderTelegramInputRequest`, `registerTelegramFreeformPrompt`).
+
+- `agent/lib/media/last-candidates.ts`: a `defineState` slot keyed by TMDB id holding `{ title, year, summary, posterPath }` for the candidates the last `search_media` or `get_media_recommendations` call returned. Both tools write it; nothing else reads it except the handler below.
+- Instructions: when calling `ask_question` to choose between titles, use the TMDB id as each option `id` and "Title (Year)" as the label.
+- `agent/lib/telegram/rich-input.ts`: an `input.requested` handler. For `kind: "question"` whose option ids all resolve in the candidates slot, send one `sendMediaGroup` (2 to 10 photos; a single candidate uses `sendPhoto`) with TMDB poster URLs (`https://image.tmdb.org/t/p/w342` plus `posterPath`) and captions numbered to match the buttons, then render the prompt and keyboard exactly as the default does via `renderTelegramInputRequest` and `registerTelegramFreeformPrompt`. For `kind: "tool-approval"` on `request_media`, send the single poster with the title and summary as caption before the approve/cancel keyboard. Anything else falls through to the default rendering.
+- Candidates without a `posterPath` get a text-only line in the caption group rather than breaking the whole group.
+- Telegram fetches the images itself from the TMDB URL, so nothing is proxied through the agent. Captions are capped at 1024 characters; summaries are already truncated to about 200.
+- Colocated tests for the caption builder, the media group shape, and the fall-through cases.
+
+Verify: `eve dev` cannot show photos, so this needs the development bot from MR 6. Ambiguous search shows posters then buttons; a confirmation shows one poster; a question whose ids are not TMDB ids renders as before.
 
 ## Risks
 
