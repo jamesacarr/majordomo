@@ -6,17 +6,25 @@ The implementation plan and MR stack live in [`docs/plan.md`](./docs/plan.md).
 
 ## Getting started
 
-First, run the development server:
+Copy `.env.example` to `.env` and fill in the values, then run the development server:
 
 ```bash
-eve dev
+pnpm install
+pnpm dev
 ```
 
 The development TUI opens an interactive session where you can send messages to your agent.
 
-Start by editing `agent/instructions.md` to define the agent's identity, purpose, tone, and response guidelines. Configure its model and runtime behavior in `agent/agent.ts`.
+The agent is locked down by default: the built-in shell, file, and web tools are disabled in `agent/tools/`, and the only way it can act is through the typed tools this project authors. Logic and its tests live in `agent/lib/`; files in the eve-discovered directories only bind definitions to it. See the plan for why.
 
-Add capabilities under `agent/`, including tools, connections, channels, skills, subagents, and schedules. eve reloads your changes as you work.
+Checks:
+
+```bash
+pnpm lint:ci
+pnpm typecheck
+pnpm test
+pnpm build
+```
 
 ## Learn more
 

@@ -1,15 +1,14 @@
-import { localDev, placeholderAuth, vercelOidc } from 'eve/channels/auth';
+import { localDev, vercelOidc } from 'eve/channels/auth';
 import { eveChannel } from 'eve/channels/eve';
 
+// The HTTP channel serves the eve dev TUI and evals only. Household users
+// arrive through the Telegram channel, which carries its own allowlist.
 export default eveChannel({
   auth: [
-    // Lets the eve TUI and your Vercel deployments reach the deployed agent.
+    // Vercel OIDC bearer tokens: the eve TUI pointed at a deployment, and
+    // the deployment's own internal callers.
     vercelOidc(),
-    // Open on localhost for `eve dev` and the REPL; ignored in production.
+    // Synthetic principal for `eve dev`; authenticates nothing in production.
     localDev(),
-    // This placeholder will not allow browser requests in production.
-    // Replace it with your app's auth provider, like Auth.js or Clerk,
-    // or use none() for a public demo.
-    placeholderAuth(),
   ],
 });
