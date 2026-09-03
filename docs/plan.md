@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-09-03T22:45:57Z
+updated_at: 2026-09-03T22:59:01Z
 status: draft
 ---
 
@@ -86,9 +86,9 @@ agent/
     telegram/
       create-on-message.ts      createOnMessage: private chats + allowlist -> auth
       bold-tag.ts               BOLD_TAG regex shared by render and strip
-      render-telegram-html.ts   renderTelegramHtml: escape all but <b>
-      strip-telegram-html.ts    stripTelegramHtml: plain-text fallback body
-      is-telegram-bad-request.ts  isTelegramBadRequest: detect eve's HTTP 400 send error
+      render-html.ts            renderHtml: escape all but <b>
+      strip-html.ts             stripHtml: plain-text fallback body
+      is-bad-request.ts         isBadRequest: detect eve's HTTP 400 send error
       on-message-completed.ts   onMessageCompleted: HTML send, plain-text retry on 400
     seerr/
       client.ts                 fetch wrapper with X-Api-Key
@@ -224,7 +224,7 @@ Read first: `channels/telegram.mdx`, `channels/overview.mdx`, and the `TelegramI
 - `agent/lib/parse-allowlist.ts` and `agent/lib/lookup-user.ts`: parse `MAJORDOMO_ALLOWED_USERS` (`{"123456789": "Alice"}`) with zod, expose `lookupUser(telegramUserId)` returning `{ name, tag }` where `tag` is the lowercased name. Throw at first use if the env var is missing or malformed.
 - `agent/lib/telegram/create-on-message.ts`: `onMessage` handler that drops non-private chats and unknown users. For known users, return `auth` with `principalId: telegram:<id>`, `principalType: "user"`, `authenticator: "majordomo-allowlist"`, attributes `{ user_id, chat_id, name, tag }`. Set `title` to the user's name for the run.
 - `agent/channels/telegram.ts`: `telegramChannel({ onMessage, events })`. No `botUsername`: eve only uses it for group mention detection, and groups are dropped.
-- `agent/lib/telegram/on-message-completed.ts` (with `render-telegram-html.ts`, `strip-telegram-html.ts`, `is-telegram-bad-request.ts`): a `message.completed` handler that escapes `&`, `<`, `>` outside a whitelist of `<b>`/`</b>` tags, posts with `parse_mode: "HTML"`, and on a Telegram 400 re-posts the tag-stripped plain text. Colocated tests for the escaping and the fallback.
+- `agent/lib/telegram/on-message-completed.ts` (with `render-html.ts`, `strip-html.ts`, `is-bad-request.ts`): a `message.completed` handler that escapes `&`, `<`, `>` outside a whitelist of `<b>`/`</b>` tags, posts with `parse_mode: "HTML"`, and on a Telegram 400 re-posts the tag-stripped plain text. Colocated tests for the escaping and the fallback.
 - Update `agent/instructions/10-core.md`: bold titles with `<b>`, no other markup.
 - `agent/lib/require-requester.ts`: `requireRequester(ctx)` returns `{ name, tag }` from session attributes, with the `EVE_DEV` fallback described above.
 

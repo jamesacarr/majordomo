@@ -3,9 +3,9 @@ import type {
   TelegramMessageBody,
 } from 'eve/channels/telegram';
 
-import { isTelegramBadRequest } from './is-telegram-bad-request';
-import { renderTelegramHtml } from './render-telegram-html';
-import { stripTelegramHtml } from './strip-telegram-html';
+import { isBadRequest } from './is-bad-request';
+import { renderHtml } from './render-html';
+import { stripHtml } from './strip-html';
 
 /** `TelegramMessageBody` omits `parse_mode`, but eve spreads the body straight into `sendMessage`. */
 type HtmlMessageBody = TelegramMessageBody & { readonly parse_mode: 'HTML' };
@@ -24,14 +24,14 @@ export const onMessageCompleted: NonNullable<
   }
   const body: HtmlMessageBody = {
     parse_mode: 'HTML',
-    text: renderTelegramHtml(data.message),
+    text: renderHtml(data.message),
   };
   try {
     await channel.telegram.post(body);
   } catch (error) {
-    if (!isTelegramBadRequest(error)) {
+    if (!isBadRequest(error)) {
       throw error;
     }
-    await channel.telegram.post(stripTelegramHtml(data.message));
+    await channel.telegram.post(stripHtml(data.message));
   }
 };
