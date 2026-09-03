@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "declaration": false,
+
+    "esModuleInterop": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["ES2024"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+
+    "strict": true,
+    "target": "ES2024",
+    "types": ["node", "eve/workflow-modules"],
+    "verbatimModuleSyntax": true
+  },
+  "exclude": ["node_modules", "dist"],
+  "include": [
+    "agent/**/*.ts",
+    "evals/**/*.ts",
+    "commitlint.config.ts",
+    "lint-staged.config.ts",
+    "vitest.config.ts"
+  ]
+}

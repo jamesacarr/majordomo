@@ -1,0 +1,44 @@
+{
+  "name": "majordomo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Household agent on Telegram that routes requests to home services, starting with Seerr media requests",
+  "engines": {
+    "node": "26.x"
+  },
+  "imports": {
+    "#*": "./agent/*",
+    "#evals/*": "./evals/*"
+  },
+  "scripts": {
+    "build": "eve build",
+    "deploy": "eve deploy",
+    "dev": "eve dev",
+    "eval": "eve eval",
+    "lint": "biome check --write .",
+    "lint:ci": "biome check .",
+    "prepare": "husky",
+    "start": "eve start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ai": "^7.0.90",
+    "eve": "^0.50.0",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "@commitlint/types": "^21.2.0",
+    "@types/node": "26.x",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.4.1",
+    "tsx": "^4.21.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.4"
+  }
+}

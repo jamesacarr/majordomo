@@ -1,0 +1,28 @@
+# Build
+*.log
+*.tsbuildinfo
+.output
+coverage
+dist
+
+# Environment
+.env*
+
+# IDEs
+.idea/
+.vscode/
+
+# MacOS
+.DS_Store
+
+# Node
+node_modules/
+
+# Vercel
+.eve
+.next
+.nitro
+.vercel
+
+# Keep the example alongside the ignored real env files
+!.env.example
