@@ -2,21 +2,27 @@
 
 A household agent built on [eve](https://eve.dev). Allowlisted people talk to it through a Telegram bot and it routes their requests to home services. The first capability is requesting movies and TV shows through [Seerr](https://seerr.dev), with every request confirmed before submission and tagged with the requester's name.
 
-The implementation plan and MR stack live in [`docs/plan.md`](./docs/plan.md).
-
 ## Getting started
 
-First, run the development server:
+Copy `.env.example` to `.env` and fill in the values, then run the development server:
 
 ```bash
-eve dev
+pnpm install
+pnpm dev
 ```
 
 The development TUI opens an interactive session where you can send messages to your agent.
 
-Start by editing `agent/instructions.md` to define the agent's identity, purpose, tone, and response guidelines. Configure its model and runtime behavior in `agent/agent.ts`.
+The agent is locked down by default: the built-in shell, file, and web tools are disabled in `agent/tools/`, and the only way it can act is through the typed tools this project authors. The default landing page at `/` is disabled in `agent/channels/home.ts`; only the health route and the authenticated session routes under `/eve/v1` are served. Logic and its colocated tests live in `agent/lib/`. Files in the directories eve discovers (`tools/`, `channels/`, `instructions/`, `skills/`, `schedules/`) only bind definitions to that code, because eve treats every file there as a definition and a `*.test.ts` alongside a tool fails the build.
 
-Add capabilities under `agent/`, including tools, connections, channels, skills, subagents, and schedules. eve reloads your changes as you work.
+Checks:
+
+```bash
+pnpm lint:ci
+pnpm typecheck
+pnpm test
+pnpm build
+```
 
 ## Learn more
 

@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-09-03T05:59:20Z
+updated_at: 2026-09-03T07:58:13Z
 status: draft
 ---
 
@@ -28,6 +28,7 @@ Work through this document one MR at a time. Each MR section lists the eve doc p
 | Seerr approval | All bot requests are auto-approved, because they arrive through one admin API key. Seerr's per-user quotas and approval rules do not apply. | Confirmed 2026-09-03. Per-user rules, if ever wanted, would live in the bot. |
 | Bots | A separate development bot for `eve dev` and testing. The production bot keeps serving the previous implementation until go-live, when its token moves to Vercel. | Telegram allows one webhook or one poller per token, not both. |
 | Runtime | Node 24, the newest version Vercel's functions runtime supports. `engines.node`, `mise.toml`, and `@types/node` all say 24. | Verified 2026-09-03 against Vercel's supported-versions docs and `@vercel/build-utils`, which reject unknown versions at build time rather than falling back. Node 26 is only available in Vercel Sandboxes. |
+| Telegram formatting | Deliver replies with `parse_mode: HTML` and fall back to plain text if Telegram rejects the message. The model may use `<b>` for titles and nothing else. | eve's default handler sends plain text, but its `sendMessage` body is spread through, so a custom `message.completed` handler can add `parse_mode`. HTML needs only `<`, `>`, `&` escaped; MarkdownV2 needs a dozen characters escaped and the model will get it wrong. Implemented in MR 2. |
 | Cost bounds | Session lifetime and token budgets in `agent.ts` `limits`, small tool outputs, and a spend cap on the AI Gateway. | See "Cost controls" below. |
 
 ## Decisions still open
@@ -186,6 +187,7 @@ Each MR must merge on its own and leave `pnpm lint:ci`, `pnpm typecheck`, and `p
 | 5 | Request tool with confirmation and tagging | todo |
 | 6 | Deployment runbook and first production deploy | todo |
 | 7 | Request listing | todo |
+| 8 | Posters and summaries on disambiguation and confirmation | todo |
 
 ### MR 1: Repo hygiene and locked-down scaffold
 
@@ -208,7 +210,9 @@ Read first: `channels/telegram.mdx`, `channels/overview.mdx`, and the `TelegramI
 
 - `agent/lib/allowlist.ts`: parse `MAJORDOMO_ALLOWED_USERS` (`{"123456789": "Alice"}`) with zod, expose `lookupUser(telegramUserId)` returning `{ name, tag }` where `tag` is the lowercased name. Throw at first use if the env var is missing or malformed.
 - `agent/lib/telegram/on-message.ts`: `onMessage` handler that drops non-private chats and unknown users. For known users, return `auth` with `principalId: telegram:<id>`, `principalType: "user"`, `authenticator: "majordomo-allowlist"`, attributes `{ user_id, chat_id, name, tag }`. Set `title` to the user's name for the run.
-- `agent/channels/telegram.ts`: `telegramChannel({ botUsername, onMessage })`, nothing else.
+- `agent/channels/telegram.ts`: `telegramChannel({ botUsername, onMessage, events })`.
+- `agent/lib/telegram/deliver.ts`: a `message.completed` handler that escapes `&`, `<`, `>` outside a whitelist of `<b>`/`</b>` tags, posts with `parse_mode: "HTML"`, and on a Telegram 400 re-posts the tag-stripped plain text. Colocated tests for the escaping and the fallback.
+- Update `agent/instructions/10-core.md`: bold titles with `<b>`, no other markup.
 - `agent/lib/principal.ts`: `requireRequester(ctx)` returns `{ name, tag }` from session attributes, with the `EVE_DEV` fallback described above.
 
 Tests (colocated in `lib/`): allowlist parsing, rejection of malformed JSON, `onMessage` dropping groups and strangers, attribute shape for a known user, `requireRequester` behaviour with and without attributes and in dev mode.
@@ -230,8 +234,9 @@ Tests: each client method builds the right path, query and headers against a fak
 
 Read first: `tools/overview.mdx`, `evals/overview.mdx`.
 
-- `agent/lib/media/search.ts` and `agent/lib/media/recommend.ts` hold the logic with colocated tests. `agent/tools/search_media.ts` and `agent/tools/get_media_recommendations.ts` bind the zod schemas to them, per the contracts above.
-- `agent/instructions/20-media.md`: the procedure. Search first. If one result clearly matches (title and year agree, or only one non-person result), proceed. If several plausible matches, call `ask_question` with up to five options labelled "Title (Year)". Mention availability when something is already in the library. For recommendation questions, search the named title, then call `get_media_recommendations`, and present up to five with one-line reasons. Never use Markdown.
+- `agent/lib/media/search.ts`, `agent/lib/media/recommend.ts`, and `agent/lib/media/details.ts` hold the logic with colocated tests. `agent/tools/search_media.ts`, `agent/tools/get_media_recommendations.ts`, and `agent/tools/get_media_details.ts` bind the zod schemas to them.
+- `get_media_details` takes `{ tmdbId, mediaType }` and returns title, year, overview, runtime or season count, genres, top-billed cast, director or creators, and availability from `/movie/{id}` or `/tv/{id}`. It exists so "is that the Christian Bale one?" is answered from data, not memory.
+- `agent/instructions/20-media.md`: the procedure. Search first. If one result clearly matches (title and year agree, or only one non-person result), proceed. If several plausible matches, call `ask_question` with up to five options labelled "Title (Year)". Availability is part of every search result: when someone asks whether something is on the server, call `search_media` and answer from the `availability` field without offering to request it. When they ask to request something that is already available, say so and stop; if it is pending or processing, say it's on its way and stop. Do not request again in either case. For clarifying questions about a candidate (cast, director, which version), call `get_media_details` before answering. For recommendation questions, search the named title, then call `get_media_recommendations`, and present up to five with one-line reasons. Never use Markdown.
 - `evals/evals.config.ts` and first evals: a clear search calls `search_media`; an ambiguous search (for example "Dune") calls `ask_question` and `t.requireInputRequest` sees more than one option; a recommendation question calls both tools; an unrelated request ("what's the weather") calls no tool and declines. Point the eval Seerr URL at a local stub (`agent/lib/media/stub-server.ts`, an HTTP server serving fixture JSON) so evals are deterministic and free of network.
 
 Verify: `pnpm test` and `eve eval media`.
@@ -262,6 +267,21 @@ Verify: the smoke test checklist in the runbook, ticked off with the date. One w
 - `agent/lib/media/list-requests.ts` with colocated tests, bound by `agent/tools/list_media_requests.ts` per the contract.
 - Instructions: answer "what have I requested" and "what's the status of X" with this tool.
 - Evals for both phrasings.
+
+### MR 8: Posters and summaries on disambiguation and confirmation
+
+eve's default Telegram renderer shows a question as the prompt text plus one button per option label. Option `description` is not rendered, and nothing carries images. This MR replaces the `input.requested` handler so that choosing between titles, and confirming a request, shows each candidate's poster and a one-line summary.
+
+Read first: `channels/telegram.mdx` (event handler overrides), `concepts/state.md` (`defineState`), and the public exports in `node_modules/eve/dist/src/public/channels/telegram/index.d.ts` (`renderTelegramInputRequest`, `registerTelegramFreeformPrompt`).
+
+- `agent/lib/media/last-candidates.ts`: a `defineState` slot keyed by TMDB id holding `{ title, year, summary, posterPath }` for the candidates the last `search_media` or `get_media_recommendations` call returned. Both tools write it; nothing else reads it except the handler below.
+- Instructions: when calling `ask_question` to choose between titles, use the TMDB id as each option `id` and "Title (Year)" as the label.
+- `agent/lib/telegram/rich-input.ts`: an `input.requested` handler. For `kind: "question"` whose option ids all resolve in the candidates slot, send one `sendMediaGroup` (2 to 10 photos; a single candidate uses `sendPhoto`) with TMDB poster URLs (`https://image.tmdb.org/t/p/w342` plus `posterPath`) and captions numbered to match the buttons, then render the prompt and keyboard exactly as the default does via `renderTelegramInputRequest` and `registerTelegramFreeformPrompt`. For `kind: "tool-approval"` on `request_media`, send the single poster with the title and summary as caption before the approve/cancel keyboard. Anything else falls through to the default rendering.
+- Candidates without a `posterPath` get a text-only line in the caption group rather than breaking the whole group.
+- Telegram fetches the images itself from the TMDB URL, so nothing is proxied through the agent. Captions are capped at 1024 characters; summaries are already truncated to about 200.
+- Colocated tests for the caption builder, the media group shape, and the fall-through cases.
+
+Verify: `eve dev` cannot show photos, so this needs the development bot from MR 6. Ambiguous search shows posters then buttons; a confirmation shows one poster; a question whose ids are not TMDB ids renders as before.
 
 ## Risks
 
