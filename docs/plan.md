@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-09-03T05:35:16Z
+updated_at: 2026-09-03T05:59:20Z
 status: draft
 ---
 
@@ -27,7 +27,7 @@ Work through this document one MR at a time. Each MR section lists the eve doc p
 | Gateway auth | Production authenticates to the AI Gateway with Vercel OIDC automatically. Local `eve dev` and `eve eval` use `AI_GATEWAY_API_KEY` from `.env`. | No switch needed; the two paths coexist. |
 | Seerr approval | All bot requests are auto-approved, because they arrive through one admin API key. Seerr's per-user quotas and approval rules do not apply. | Confirmed 2026-09-03. Per-user rules, if ever wanted, would live in the bot. |
 | Bots | A separate development bot for `eve dev` and testing. The production bot keeps serving the previous implementation until go-live, when its token moves to Vercel. | Telegram allows one webhook or one poller per token, not both. |
-| Runtime | Node 26, which Vercel supports. | Confirmed 2026-09-03. |
+| Runtime | Node 24, the newest version Vercel's functions runtime supports. `engines.node`, `mise.toml`, and `@types/node` all say 24. | Verified 2026-09-03 against Vercel's supported-versions docs and `@vercel/build-utils`, which reject unknown versions at build time rather than falling back. Node 26 is only available in Vercel Sandboxes. |
 | Cost bounds | Session lifetime and token budgets in `agent.ts` `limits`, small tool outputs, and a spend cap on the AI Gateway. | See "Cost controls" below. |
 
 ## Decisions still open
