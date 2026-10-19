@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { ALLOWLIST_ENV } from './constants';
+import { toTag } from './to-tag';
 import type { AllowedUser } from './types';
 
 const allowlistSchema = z.record(
@@ -33,8 +34,22 @@ export const parseAllowlist = (
     );
   }
   const users = new Map<string, AllowedUser>();
+  const idsByTag = new Map<string, string>();
   for (const [id, name] of Object.entries(parsed.data)) {
-    users.set(id, { name, tag: name.toLowerCase() });
+    const tag = toTag(name);
+    if (tag === '') {
+      throw new Error(
+        `${ALLOWLIST_ENV} is malformed at "${id}": "${name}" has no letters or digits to make a tag from`,
+      );
+    }
+    const clash = idsByTag.get(tag);
+    if (clash !== undefined) {
+      throw new Error(
+        `${ALLOWLIST_ENV} is malformed: ids "${clash}" and "${id}" both map to tag "${tag}"; rename one`,
+      );
+    }
+    idsByTag.set(tag, id);
+    users.set(id, { name, tag });
   }
   return users;
 };

@@ -5,6 +5,6 @@ export type Env = Readonly<Record<string, string | undefined>>;
 export interface AllowedUser {
   /** Display name as written in the allowlist. */
   readonly name: string;
-  /** Radarr/Sonarr tag label for this person: the lowercased name. */
+  /** Radarr/Sonarr tag label for this person: the slugified name (see `toTag`). */
   readonly tag: string;
 }

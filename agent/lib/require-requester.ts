@@ -1,6 +1,7 @@
 import type { SessionContext } from 'eve/tools';
 
 import { ALLOWLIST_AUTHENTICATOR } from './constants';
+import { toTag } from './to-tag';
 import type { AllowedUser, Env } from './types';
 
 /** The part of the runtime context this function reads. Tools pass their `ctx` straight in. */
@@ -23,7 +24,8 @@ const fromDevEnv = (env: Env): AllowedUser | null => {
   if (env.EVE_DEV !== '1' || !name) {
     return null;
   }
-  return { name, tag: name.toLowerCase() };
+  const tag = toTag(name);
+  return tag === '' ? null : { name, tag };
 };
 
 /**

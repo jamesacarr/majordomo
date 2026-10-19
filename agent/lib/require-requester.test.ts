@@ -84,8 +84,11 @@ describe('requireRequester', () => {
       requireRequester(ctx, { EVE_DEV: '1', MAJORDOMO_DEV_USER: 'Bob Smith' }),
     ).toEqual({
       name: 'Bob Smith',
-      tag: 'bob smith',
+      tag: 'bob-smith',
     });
+    expect(() =>
+      requireRequester(ctx, { EVE_DEV: '1', MAJORDOMO_DEV_USER: '美咲' }),
+    ).toThrow('no requester identity');
     expect(() =>
       requireRequester(ctx, { EVE_DEV: 'true', MAJORDOMO_DEV_USER: 'Bob' }),
     ).toThrow();

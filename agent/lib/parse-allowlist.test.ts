@@ -4,7 +4,7 @@ import { ALLOWLIST_ENV } from './constants';
 import { parseAllowlist } from './parse-allowlist';
 
 describe('parseAllowlist', () => {
-  it('maps each Telegram user id to a name and a lowercased tag', () => {
+  it('maps each Telegram user id to a name and a slugified tag', () => {
     const users = parseAllowlist(
       '{"123456789":"Alice","987654321":"Bob Smith"}',
     );
@@ -12,7 +12,7 @@ describe('parseAllowlist', () => {
     expect(users.get('123456789')).toEqual({ name: 'Alice', tag: 'alice' });
     expect(users.get('987654321')).toEqual({
       name: 'Bob Smith',
-      tag: 'bob smith',
+      tag: 'bob-smith',
     });
     expect(users.size).toBe(2);
   });
@@ -50,5 +50,17 @@ describe('parseAllowlist', () => {
     expect(() => parseAllowlist('{"123":"Alice","456":""}')).toThrow(
       'at "456"',
     );
+  });
+
+  it('throws when a name has nothing to make a tag from', () => {
+    expect(() => parseAllowlist('{"123":"Alice","456":"美咲"}')).toThrow(
+      `${ALLOWLIST_ENV} is malformed at "456"`,
+    );
+  });
+
+  it('throws when two people would share a tag, naming both ids and the tag', () => {
+    expect(() =>
+      parseAllowlist('{"300":"Mary Jane","500":"Mary-Jane"}'),
+    ).toThrow('ids "300" and "500" both map to tag "mary-jane"');
   });
 });
