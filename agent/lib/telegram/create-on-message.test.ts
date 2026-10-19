@@ -44,6 +44,7 @@ describe('createOnMessage', () => {
         principalId: 'telegram:123456789',
         principalType: 'user',
       },
+      context: ['requester_name: Alice'],
       title: 'Alice',
     });
     expect(startTyping).toHaveBeenCalledOnce();

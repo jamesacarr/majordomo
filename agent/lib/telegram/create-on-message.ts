@@ -54,6 +54,8 @@ export const createOnMessage =
         principalId: `telegram:${from.id}`,
         principalType: 'user',
       },
+      // Auth attributes never reach the model, so the name goes in as context.
+      context: [`requester_name: ${user.name}`],
       title: user.name,
     };
   };
