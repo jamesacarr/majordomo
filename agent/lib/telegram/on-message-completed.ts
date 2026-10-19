@@ -2,6 +2,7 @@ import type {
   TelegramChannelEvents,
   TelegramMessageBody,
 } from 'eve/channels/telegram';
+import { TELEGRAM_MESSAGE_TEXT_MAX_LENGTH } from 'eve/channels/telegram';
 
 import { isBadRequest } from './is-bad-request';
 import { renderHtml } from './render-html';
@@ -12,9 +13,11 @@ type HtmlMessageBody = TelegramMessageBody & { readonly parse_mode: 'HTML' };
 
 /**
  * `message.completed` handler. Posts the reply as HTML so `<b>` titles render.
- * Telegram answers 400 to malformed HTML (an unclosed tag, or a tag split by
- * eve's 4096-character chunking), in which case the reply is re-sent as plain
- * text with the tags removed. The skip conditions are eve's defaults.
+ * eve splits text over 4096 characters and sends every chunk after the first
+ * without `parse_mode`, so a reply that long goes out as plain text instead.
+ * Telegram answers 400 to malformed HTML such as an unclosed tag, in which case
+ * the reply is re-sent as plain text with the tags removed. The skip conditions
+ * are eve's defaults.
  */
 export const onMessageCompleted: NonNullable<
   TelegramChannelEvents['message.completed']
@@ -22,10 +25,12 @@ export const onMessageCompleted: NonNullable<
   if (data.finishReason === 'tool-calls' || !data.message) {
     return;
   }
-  const body: HtmlMessageBody = {
-    parse_mode: 'HTML',
-    text: renderHtml(data.message),
-  };
+  const html = renderHtml(data.message);
+  if (html.length > TELEGRAM_MESSAGE_TEXT_MAX_LENGTH) {
+    await channel.telegram.post(stripHtml(data.message));
+    return;
+  }
+  const body: HtmlMessageBody = { parse_mode: 'HTML', text: html };
   try {
     await channel.telegram.post(body);
   } catch (error) {

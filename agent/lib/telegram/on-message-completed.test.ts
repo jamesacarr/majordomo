@@ -54,6 +54,18 @@ describe('onMessageCompleted', () => {
     expect(post).toHaveBeenLastCalledWith('Unclosed & broken');
   });
 
+  it('sends plain text when escaping pushes the reply past one Telegram message', async () => {
+    // 2,000 ampersands fit in one message, but escaped to &amp; they need 10,000
+    // characters. eve would split that and send every chunk after the first
+    // without parse_mode, showing the entities raw.
+    const reply = `<b>Title</b> ${'&'.repeat(2_000)}`;
+    const post = vi.fn(async () => ({ id: '1', raw: null }));
+
+    await onMessageCompleted(completed(reply), channelWith(post), session);
+
+    expect(post).toHaveBeenCalledExactlyOnceWith(`Title ${'&'.repeat(2_000)}`);
+  });
+
   it('rethrows any other send failure without a plain-text retry', async () => {
     const error = new Error(
       'Telegram sendMessage failed with HTTP 429: Too Many Requests',
