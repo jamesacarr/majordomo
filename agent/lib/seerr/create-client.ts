@@ -31,6 +31,7 @@ const isTimeout = (error: unknown): boolean =>
 const readErrorMessage = async (response: Response): Promise<string> => {
   try {
     const body: unknown = await response.json();
+
     if (
       typeof body === 'object' &&
       body !== null &&
@@ -43,6 +44,7 @@ const readErrorMessage = async (response: Response): Promise<string> => {
   } catch {
     // Not JSON; use the status text below.
   }
+
   return response.statusText || 'no error message';
 };
 
@@ -83,19 +85,23 @@ export const createClient = ({
       method: 'GET',
       signal: AbortSignal.timeout(timeoutMs),
     };
+
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
       init.method = 'POST';
       init.body = JSON.stringify(body);
     }
+
     try {
       const response = await fetch(
         `${root}${path}${toQueryString(query)}`,
         init,
       );
+
       if (!response.ok) {
         throw new ApiError(response.status, await readErrorMessage(response));
       }
+
       return (await response.json()) as T;
     } catch (error) {
       if (isTimeout(error)) {
@@ -103,6 +109,7 @@ export const createClient = ({
           cause: error,
         });
       }
+
       throw error;
     }
   };

@@ -8,6 +8,7 @@ import type {
 
 const toYear = (date: string | undefined): number | null => {
   const year = Number.parseInt(date?.slice(0, 4) ?? '', 10);
+
   return Number.isNaN(year) ? null : year;
 };
 
@@ -18,6 +19,7 @@ const toAvailability = (mediaInfo: MediaInfo | undefined): Availability =>
 
 const truncate = (text: string | undefined): string => {
   const trimmed = text?.trim() ?? '';
+
   return trimmed.length <= OVERVIEW_MAX_LENGTH
     ? trimmed
     : `${trimmed.slice(0, OVERVIEW_MAX_LENGTH - 1).trimEnd()}…`;

@@ -22,11 +22,13 @@ export const resolveTagIds = async (
     ? client.radarrServers()
     : client.sonarrServers());
   const server = servers.find(s => s.isDefault && !s.is4k);
+
   if (server === undefined) {
     throw new Error(
       `Seerr has no default non-4K ${service} server, so it has nowhere to send the request.`,
     );
   }
+
   const { tags } = await (mediaType === 'movie'
     ? client.radarrServer(server.id)
     : client.sonarrServer(server.id));
@@ -36,13 +38,16 @@ export const resolveTagIds = async (
 
   const ids: number[] = [];
   const missing: string[] = [];
+
   for (const label of labels) {
     const id = idsByLabel.get(label.toLowerCase());
+
     if (id === undefined) {
       missing.push(label);
     } else {
       ids.push(id);
     }
   }
+
   return { ids, missing };
 };

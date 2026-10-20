@@ -23,8 +23,10 @@ const recordingFetch = (
       method: init?.method ?? 'GET',
       url: String(input),
     });
+
     return Promise.resolve(response());
   };
+
   return { fetch, sent };
 };
 
@@ -214,6 +216,7 @@ describe('createClient', () => {
             );
           },
         });
+
         return Promise.resolve(new Response(body, { status: 200 }));
       };
       const client = createClient({

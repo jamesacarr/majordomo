@@ -27,10 +27,12 @@ const fakeSeerr = ({
 }) => {
   const details = (servers: readonly ServiceServer[]) => (id: number) => {
     const found = servers.find(s => s.id === id);
+
     return found === undefined
       ? Promise.reject(new Error(`no server ${id}`))
       : Promise.resolve({ server: found, tags: tags[id] ?? [] });
   };
+
   return {
     radarrServer: details(radarr),
     radarrServers: async () => radarr,
