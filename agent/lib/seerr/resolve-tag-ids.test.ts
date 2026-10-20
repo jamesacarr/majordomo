@@ -23,7 +23,7 @@ const fakeSeerr = ({
 }: {
   readonly radarr?: readonly ServiceServer[];
   readonly sonarr?: readonly ServiceServer[];
-  readonly tags?: Readonly<Record<number, readonly ServiceTag[]>>;
+  readonly tags?: Readonly<Record<number, ServiceTag[]>>;
 }) => {
   const details = (servers: readonly ServiceServer[]) => (id: number) => {
     const found = servers.find(s => s.id === id);
