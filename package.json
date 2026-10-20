@@ -26,7 +26,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "ai": "^7.0.90",
+    "ai": "^7.0.143",
     "eve": "^0.50.0",
     "zod": "4.5.4"
   },
