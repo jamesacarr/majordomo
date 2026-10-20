@@ -22,6 +22,7 @@
     "prepare": "husky",
     "start": "eve start",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
