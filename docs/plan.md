@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-10-20T03:59:23Z
+updated_at: 2026-10-20T04:18:12Z
 status: draft
 ---
 
@@ -209,6 +209,7 @@ Each MR must merge on its own and leave `pnpm lint:ci`, `pnpm typecheck`, and `p
 | 1 | Repo hygiene and locked-down scaffold | done (2026-09-03) |
 | 2 | Telegram channel with allowlist | done (2026-10-19) |
 | 3 | Seerr client | in review (2026-10-20) |
+| 3a | Validate Seerr responses with zod | todo |
 | 4 | Search and recommendation tools | todo |
 | 5 | Request tool with confirmation and tagging | todo |
 | 6 | Deployment runbook and first production deploy | todo |
@@ -257,6 +258,18 @@ File names follow the one-function-per-file rule, so the plan's original `client
 - `agent/lib/seerr/constants.ts` exports `SEERR_TAG = "seerr"`; `agent/lib/seerr/resolve-tag-ids.ts` exports `resolveTagIds(client, mediaType, labels)`, which picks the default non-4K server, fetches its tags once, matches each label case-insensitively, and returns `{ ids, missing }` so the caller can report exactly which label is absent.
 
 Tests: each client method builds the right path, query and headers against a fake fetch. Normalisation covers movie, TV, person (dropped), and every status code. Tag resolution covers both labels found, only `seerr` found, only the user tag found, neither found, and no default server.
+
+### MR 3a: Validate Seerr responses with zod
+
+Added 2026-10-20 after the MR 3 review. Starts once MR 3 merges and lands before MR 4, so the tools are written against validated types.
+
+The client casts each JSON body to its declared type, so a field Seerr renames or drops surfaces as `undefined` far from the cause. The worst case is a missing `mediaInfo.status`, which `toCandidate` reads as `not_requested`, so the agent would offer to request something already on the server.
+
+- Replace the interfaces in `agent/lib/seerr/types.ts` with zod schemas and derive the types with `z.infer`. Give `call` in `create-client.ts` a schema per method and parse every response, so a mismatch throws naming the call and the field.
+- Require only what the logic depends on: `id`, `mediaType`, `title` or `name`, and `mediaInfo.status` on results; tag `id` and `label`; request `id`, `status` and `tags`. Everything else is optional or nullable. TMDB already sends `posterPath: null`, empty `releaseDate` strings and missing overviews, and an over-strict schema would turn a harmless upstream change into every search failing.
+- Client tests answer with realistic fixtures instead of `{ ok: true }`, and gain a test per required field that a response without it throws.
+
+Rejected: checking only the three decision fields (availability, tag ids, created-request tags) inside MR 4 and MR 5. Less code, but the checks would be scattered across the tools and every new tool would have to remember them.
 
 ### MR 4: Search and recommendation tools
 
@@ -326,7 +339,7 @@ Verify: `eve dev` cannot show photos, so this needs the development bot from MR 
 
 - **Tool-call reliability of the default model.** The eval suite is the mitigation. Budget for switching models.
 - **Approval rendering on Telegram.** eve renders the approval prompt from `approval.prompt`, which MR 5 sets from the tool input. If Telegram still shows raw JSON alongside it, an `input.requested` handler override fixes it, but that is code we own.
-- **Seerr's undocumented `tags` field.** It is in the source, not the spec. Verified for 3.4.1, the running version. A future release could change it, so the request tool validates `tags` in the created request's response and fails loudly.
+- **Seerr's undocumented `tags` field.** It is in the source, not the spec. Verified for 3.4.1, the running version. A future release could change it, so MR 3a's response schema requires `tags` on the created request and the request tool checks they match what it sent.
 - **Seerr is already public.** Its API key is the only barrier between the internet and request creation today. Cloudflare Access is the follow-on; keep it on the open-decisions list until done.
 - **Double submission on replay.** Covered by the availability check and Seerr's duplicate rejection, but confirm during MR 5 that an approval survives a function restart without re-prompting.
 
