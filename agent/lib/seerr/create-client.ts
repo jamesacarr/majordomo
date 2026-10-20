@@ -5,10 +5,10 @@ import type { Client } from './types';
 type Query = Readonly<Record<string, string | number>>;
 
 /**
- * Seerr's request validator rejects `!`, `(`, `)` and `*` in query values
- * unless they are percent-encoded, which `encodeURIComponent` leaves alone.
- * Seerr's own frontend escapes the same set (`encodeURIExtraParams`), plus `'`
- * here for RFC 3986.
+ * Seerr validates requests with express-openapi-validator, which answers 400
+ * to a raw query value containing any RFC 3986 reserved character.
+ * `encodeURIComponent` escapes all of them except `!`, `'`, `(`, `)` and `*`,
+ * so those are escaped here.
  */
 const encode = (value: string | number): string =>
   encodeURIComponent(value).replace(
@@ -20,14 +20,15 @@ const toQueryString = (query: Query): string => {
   const pairs = Object.entries(query).map(
     ([key, value]) => `${key}=${encode(value)}`,
   );
+
   return pairs.length === 0 ? '' : `?${pairs.join('&')}`;
 };
 
-/** Seerr's error handler answers `{ message, errors }`; anything else falls back to the status text. */
 /** `AbortSignal.timeout` rejects with a `DOMException` named `TimeoutError`. */
 const isTimeout = (error: unknown): boolean =>
   error instanceof Error && error.name === 'TimeoutError';
 
+/** Seerr's error handler answers `{ message, errors }`; anything else falls back to the status text. */
 const readErrorMessage = async (response: Response): Promise<string> => {
   try {
     const body: unknown = await response.json();

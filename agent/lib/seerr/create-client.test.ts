@@ -32,8 +32,17 @@ const recordingFetch = (
 
 const clientWith = (
   fetch: typeof globalThis.fetch,
-  baseUrl = 'https://seerr.example.test',
-) => createClient({ apiKey: 'secret-key', baseUrl, fetch });
+  {
+    baseUrl = 'https://seerr.example.test',
+    timeoutMs,
+  }: { readonly baseUrl?: string; readonly timeoutMs?: number } = {},
+) =>
+  createClient({
+    apiKey: 'secret-key',
+    baseUrl,
+    fetch,
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+  });
 
 describe('createClient', () => {
   it.each<[string, (client: Client) => Promise<unknown>, string]>([
@@ -88,7 +97,9 @@ describe('createClient', () => {
   it('drops trailing slashes from the base URL', async () => {
     const { fetch, sent } = recordingFetch();
 
-    await clientWith(fetch, 'https://seerr.example.test//').movie(603);
+    await clientWith(fetch, { baseUrl: 'https://seerr.example.test//' }).movie(
+      603,
+    );
 
     expect(sent[0]?.url).toBe('https://seerr.example.test/api/v1/movie/603');
   });
@@ -194,16 +205,9 @@ describe('createClient', () => {
     it('throws naming the path when Seerr sends no response in time', async () => {
       const hanging: typeof globalThis.fetch = (_input, init) =>
         onAbort(init?.signal);
-      const client = createClient({
-        apiKey: 'secret-key',
-        baseUrl: 'https://seerr.example.test',
-        fetch: hanging,
-        timeoutMs: 20,
-      });
-
-      await expect(client.search('Dune')).rejects.toThrow(
-        'Seerr did not answer /search within 20 ms',
-      );
+      await expect(
+        clientWith(hanging, { timeoutMs: 20 }).search('Dune'),
+      ).rejects.toThrow('Seerr did not answer /search within 20 ms');
     });
 
     it('throws when the response body stalls after the headers arrive', async () => {
@@ -219,16 +223,23 @@ describe('createClient', () => {
 
         return Promise.resolve(new Response(body, { status: 200 }));
       };
-      const client = createClient({
-        apiKey: 'secret-key',
-        baseUrl: 'https://seerr.example.test',
-        fetch: stalling,
-        timeoutMs: 20,
-      });
+      await expect(
+        clientWith(stalling, { timeoutMs: 20 }).movie(603),
+      ).rejects.toThrow('Seerr did not answer /movie/603 within 20 ms');
+    });
 
-      await expect(client.movie(603)).rejects.toThrow(
-        'Seerr did not answer /movie/603 within 20 ms',
-      );
+    it('gives each call its own deadline rather than one shared from creation', async () => {
+      // Real fetch rejects at once when handed a signal that has already aborted.
+      const immediate: typeof globalThis.fetch = (_input, init) =>
+        init?.signal?.aborted
+          ? Promise.reject(init.signal.reason)
+          : Promise.resolve(Response.json({ id: 603 }));
+      const client = clientWith(immediate, { timeoutMs: 20 });
+
+      await client.movie(603);
+      await new Promise(resolve => setTimeout(resolve, 40));
+
+      await expect(client.movie(603)).resolves.toEqual({ id: 603 });
     });
 
     it('passes other network failures through unchanged', async () => {

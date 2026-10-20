@@ -17,21 +17,27 @@ export const resolveTagIds = async (
   mediaType: MediaType,
   labels: readonly string[],
 ): Promise<{ readonly ids: number[]; readonly missing: string[] }> => {
-  const service = mediaType === 'movie' ? 'Radarr' : 'Sonarr';
-  const servers = await (mediaType === 'movie'
-    ? client.radarrServers()
-    : client.sonarrServers());
-  const server = servers.find(s => s.isDefault && !s.is4k);
+  const service =
+    mediaType === 'movie'
+      ? {
+          details: client.radarrServer,
+          list: client.radarrServers,
+          name: 'Radarr',
+        }
+      : {
+          details: client.sonarrServer,
+          list: client.sonarrServers,
+          name: 'Sonarr',
+        };
+  const server = (await service.list()).find(s => s.isDefault && !s.is4k);
 
   if (server === undefined) {
     throw new Error(
-      `Seerr has no default non-4K ${service} server, so it has nowhere to send the request.`,
+      `Seerr has no default non-4K ${service.name} server, so it has nowhere to send the request.`,
     );
   }
 
-  const { tags } = await (mediaType === 'movie'
-    ? client.radarrServer(server.id)
-    : client.sonarrServer(server.id));
+  const { tags } = await service.details(server.id);
   const idsByLabel = new Map(
     tags.map(tag => [tag.label.toLowerCase(), tag.id]),
   );
