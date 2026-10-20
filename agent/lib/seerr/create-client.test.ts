@@ -4,6 +4,102 @@ import { ApiError } from './api-error';
 import { createClient } from './create-client';
 import type { Client } from './types';
 
+// Answers shaped like Seerr 3.4.1's, including fields the schemas don't read.
+const movieResult = {
+  adult: false,
+  genreIds: [28, 878],
+  id: 603,
+  mediaInfo: { id: 12, status: 5, tmdbId: 603 },
+  mediaType: 'movie',
+  originalTitle: 'The Matrix',
+  overview: 'A hacker learns what the Matrix is.',
+  popularity: 80.4,
+  posterPath: '/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg',
+  releaseDate: '1999-03-31',
+  title: 'The Matrix',
+  voteAverage: 8.2,
+  voteCount: 25_000,
+};
+const tvResult = {
+  firstAirDate: '2011-04-17',
+  id: 1399,
+  mediaType: 'tv',
+  name: 'Game of Thrones',
+  originCountry: ['US'],
+  overview: 'Nine noble families fight for control.',
+  posterPath: null,
+  voteAverage: 8.5,
+  voteCount: 24_000,
+};
+const page = (results: readonly unknown[]) => ({
+  page: 1,
+  results,
+  totalPages: 1,
+  totalResults: results.length,
+});
+const server = {
+  activeDirectory: '/movies',
+  activeProfileId: 1,
+  activeTags: [],
+  id: 0,
+  is4k: false,
+  isDefault: true,
+  name: 'Radarr',
+};
+const createdRequest = {
+  createdAt: '2026-10-20T04:00:00.000Z',
+  id: 41,
+  media: { id: 12, mediaType: 'movie', status: 2, tmdbId: 603 },
+  status: 2,
+  tags: [1, 9],
+  type: 'movie',
+};
+
+/** A fake Seerr: answers each path the client calls with a realistic body. */
+const seerrAnswer = (url: string, method: string): unknown => {
+  const path = new URL(url).pathname.replace(/^\/api\/v1/u, '');
+
+  if (path === '/search') {
+    return page([movieResult, tvResult]);
+  }
+
+  if (/^\/movie\/\d+\/(recommendations|similar)$/u.test(path)) {
+    return page([movieResult]);
+  }
+
+  if (/^\/tv\/\d+\/(recommendations|similar)$/u.test(path)) {
+    return page([tvResult]);
+  }
+
+  if (/^\/movie\/\d+$/u.test(path)) {
+    return { ...movieResult, runtime: 136 };
+  }
+
+  if (/^\/tv\/\d+$/u.test(path)) {
+    return { ...tvResult, seasons: [{ seasonNumber: 1 }] };
+  }
+
+  if (/^\/service\/(radarr|sonarr)$/u.test(path)) {
+    return [server];
+  }
+
+  if (/^\/service\/(radarr|sonarr)\/\d+$/u.test(path)) {
+    return {
+      profiles: [{ id: 1, name: 'HD-1080p' }],
+      rootFolders: [],
+      server,
+      tags: [{ id: 1, label: 'seerr' }],
+    };
+  }
+
+  return method === 'POST'
+    ? createdRequest
+    : {
+        pageInfo: { page: 1, pages: 1, results: 1 },
+        results: [createdRequest],
+      };
+};
+
 interface Sent {
   readonly body: unknown;
   readonly headers: Readonly<Record<string, string>>;
@@ -11,24 +107,30 @@ interface Sent {
   readonly url: string;
 }
 
-/** A transport that records each request and answers with `response`. */
+/** A transport that records each request and answers with `respond`, the fake Seerr by default. */
 const recordingFetch = (
-  response: () => Response = () => Response.json({ ok: true }),
+  respond: (url: string, method: string) => Response = (url, method) =>
+    Response.json(seerrAnswer(url, method)),
 ) => {
   const sent: Sent[] = [];
   const fetch: typeof globalThis.fetch = (input, init) => {
-    sent.push({
+    const request = {
       body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
       headers: { ...(init?.headers as Record<string, string>) },
       method: init?.method ?? 'GET',
       url: String(input),
-    });
+    };
+    sent.push(request);
 
-    return Promise.resolve(response());
+    return Promise.resolve(respond(request.url, request.method));
   };
 
   return { fetch, sent };
 };
+
+/** A transport that answers every call with `body`. */
+const answering = (body: unknown) =>
+  recordingFetch(() => Response.json(body)).fetch;
 
 const clientWith = (
   fetch: typeof globalThis.fetch,
@@ -83,13 +185,14 @@ describe('createClient', () => {
     expect(sent[0]?.headers['X-Api-Key']).toBe('secret-key');
   });
 
-  it('returns the parsed JSON body', async () => {
-    const { fetch } = recordingFetch(() =>
-      Response.json({ id: 603, title: 'The Matrix' }),
-    );
+  it('returns the parsed answer with the fields the schema does not read stripped', async () => {
+    const { fetch } = recordingFetch();
 
     await expect(clientWith(fetch).movie(603)).resolves.toEqual({
       id: 603,
+      mediaInfo: { status: 5, tmdbId: 603 },
+      overview: 'A hacker learns what the Matrix is.',
+      releaseDate: '1999-03-31',
       title: 'The Matrix',
     });
   });
@@ -114,6 +217,127 @@ describe('createClient', () => {
     );
   });
 
+  it('search drops people, collections and any other result type, keeping movies and TV in order', async () => {
+    const fetch = answering(
+      page([
+        { id: 287, knownFor: [], mediaType: 'person', name: 'Brad Pitt' },
+        movieResult,
+        { id: 2344, mediaType: 'collection', title: 'The Matrix Collection' },
+        { id: 9, mediaType: 'keyword', name: 'hacker' },
+        tvResult,
+      ]),
+    );
+
+    const { results } = await clientWith(fetch).search('matrix');
+
+    expect(results.map(r => [r.mediaType, r.id])).toEqual([
+      ['movie', 603],
+      ['tv', 1399],
+    ]);
+  });
+
+  it('accepts results with null, empty or missing optional fields', async () => {
+    const fetch = answering(
+      page([
+        {
+          id: 1,
+          mediaType: 'movie',
+          posterPath: null,
+          releaseDate: '',
+          title: 'Untitled',
+        },
+      ]),
+    );
+
+    await expect(clientWith(fetch).search('untitled')).resolves.toMatchObject({
+      results: [{ id: 1, title: 'Untitled' }],
+    });
+  });
+
+  it('accepts listed requests with no tags, as requests made outside majordomo have', async () => {
+    const fetch = answering({
+      results: [{ ...createdRequest, tags: null }],
+    });
+
+    await expect(clientWith(fetch).listRequests()).resolves.toMatchObject({
+      results: [{ id: 41, tags: null }],
+    });
+  });
+
+  it.each<[string, (client: Client) => Promise<unknown>, unknown, string]>([
+    [
+      'a movie result without a title',
+      c => c.search('x'),
+      page([{ ...movieResult, title: undefined }]),
+      'results[0].title',
+    ],
+    [
+      'a TV result without a name',
+      c => c.search('x'),
+      page([movieResult, { ...tvResult, name: undefined }]),
+      'results[1].name',
+    ],
+    [
+      'a result without a mediaType',
+      c => c.search('x'),
+      page([{ id: 1, title: 'A' }]),
+      'results[0].mediaType',
+    ],
+    [
+      'mediaInfo without a status',
+      c => c.search('x'),
+      page([{ ...movieResult, mediaInfo: { tmdbId: 603 } }]),
+      'results[0].mediaInfo.status',
+    ],
+    [
+      'a recommendation page without results',
+      c => c.movieRecommendations(603),
+      { page: 1 },
+      'results',
+    ],
+    ['movie details without a title', c => c.movie(603), { id: 603 }, 'title'],
+    ['TV details without a name', c => c.tv(1399), { id: 1399 }, 'name'],
+    [
+      'a server without isDefault',
+      c => c.radarrServers(),
+      [{ ...server, isDefault: undefined }],
+      '[0].isDefault',
+    ],
+    ['server details without tags', c => c.sonarrServer(0), { server }, 'tags'],
+    [
+      'a tag without a label',
+      c => c.radarrServer(0),
+      { server, tags: [{ id: 1 }] },
+      'tags[0].label',
+    ],
+    [
+      'a created request without its tags',
+      c => c.createRequest({ mediaId: 603, mediaType: 'movie', tags: [1] }),
+      { ...createdRequest, tags: null },
+      'tags',
+    ],
+    [
+      'a listed request without a status',
+      c => c.listRequests(),
+      { results: [{ ...createdRequest, status: undefined }] },
+      'results[0].status',
+    ],
+  ])(
+    'throws naming the path and field for %s',
+    async (_label, invoke, body, field) => {
+      const error = await invoke(clientWith(answering(body))).catch(
+        (e: unknown) => e,
+      );
+
+      const lines = (error as Error).message.split('\n');
+
+      expect(lines[0]).toMatch(
+        /^Seerr's answer to \/\S+ did not have the expected shape:$/u,
+      );
+      expect(lines).toContain(`  → at ${field}`);
+    },
+  );
+
   it('listRequests sends the given params as the query string', async () => {
     const { fetch, sent } = recordingFetch();
 
@@ -129,9 +353,7 @@ describe('createClient', () => {
   });
 
   it('createRequest POSTs the body as JSON, tags included', async () => {
-    const { fetch, sent } = recordingFetch(() =>
-      Response.json({ id: 1 }, { status: 201 }),
-    );
+    const { fetch, sent } = recordingFetch();
     const body = {
       mediaId: 1399,
       mediaType: 'tv' as const,
@@ -153,9 +375,7 @@ describe('createClient', () => {
     const { fetch } = recordingFetch(() =>
       Response.json(
         { message: 'Request for this media already exists.' },
-        {
-          status: 409,
-        },
+        { status: 409 },
       ),
     );
 
@@ -205,6 +425,7 @@ describe('createClient', () => {
     it('throws naming the path when Seerr sends no response in time', async () => {
       const hanging: typeof globalThis.fetch = (_input, init) =>
         onAbort(init?.signal);
+
       await expect(
         clientWith(hanging, { timeoutMs: 20 }).search('Dune'),
       ).rejects.toThrow('Seerr did not answer /search within 20 ms');
@@ -223,6 +444,7 @@ describe('createClient', () => {
 
         return Promise.resolve(new Response(body, { status: 200 }));
       };
+
       await expect(
         clientWith(stalling, { timeoutMs: 20 }).movie(603),
       ).rejects.toThrow('Seerr did not answer /movie/603 within 20 ms');
@@ -230,16 +452,16 @@ describe('createClient', () => {
 
     it('gives each call its own deadline rather than one shared from creation', async () => {
       // Real fetch rejects at once when handed a signal that has already aborted.
-      const immediate: typeof globalThis.fetch = (_input, init) =>
+      const immediate: typeof globalThis.fetch = (input, init) =>
         init?.signal?.aborted
           ? Promise.reject(init.signal.reason)
-          : Promise.resolve(Response.json({ id: 603 }));
+          : Promise.resolve(Response.json(seerrAnswer(String(input), 'GET')));
       const client = clientWith(immediate, { timeoutMs: 20 });
 
       await client.movie(603);
       await new Promise(resolve => setTimeout(resolve, 40));
 
-      await expect(client.movie(603)).resolves.toEqual({ id: 603 });
+      await expect(client.movie(603)).resolves.toMatchObject({ id: 603 });
     });
 
     it('passes other network failures through unchanged', async () => {

@@ -45,12 +45,6 @@ describe('toCandidate', () => {
     });
   });
 
-  it('drops people, who cannot be requested', () => {
-    expect(
-      toCandidate({ id: 287, mediaType: 'person', name: 'Brad Pitt' }),
-    ).toBeNull();
-  });
-
   it.each([
     [1, 'unknown'],
     [2, 'pending'],

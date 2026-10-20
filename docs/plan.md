@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-10-20T04:19:13Z
+updated_at: 2026-10-20T04:37:02Z
 status: draft
 ---
 
@@ -93,7 +93,8 @@ agent/
       on-message-completed.ts   onMessageCompleted: HTML send, plain-text retry on 400
     seerr/
       constants.ts              SEERR_TAG, AVAILABILITY_BY_STATUS, OVERVIEW_MAX_LENGTH
-      types.ts                  hand-written types for the fields we use, Client, MediaCandidate
+      schemas.ts                zod schemas for every Seerr answer; non-movie/TV search results dropped
+      types.ts                  response types inferred from schemas.ts; inputs, Client, MediaCandidate
       api-error.ts              ApiError: non-2xx status plus Seerr's message
       create-client.ts          createClient: fetch wrapper with X-Api-Key
       resolve-tag-ids.ts        resolveTagIds: tag labels -> ids on the default server
@@ -130,7 +131,7 @@ Three layers, in order of strength:
 ### Tool contracts
 
 `search_media`
-Input: `{ query: string, mediaType?: "movie" | "tv" }`. Calls `GET /search?query=`. Drops `person` results. Returns up to 8 `MediaCandidate` items: `{ tmdbId, mediaType, title, year, overview (truncated ~200 chars), availability: "unknown" | "pending" | "processing" | "partially_available" | "available" | "blocklisted" | "deleted" | "not_requested" }`. Availability comes from `mediaInfo.status` (1 unknown, 2 pending, 3 processing, 4 partially available, 5 available, 6 blocklisted, 7 deleted). No `mediaInfo` means not requested; a code outside that list maps to unknown.
+Input: `{ query: string, mediaType?: "movie" | "tv" }`. Calls `GET /search?query=`. The client already drops people, collections and any other non-movie, non-TV result. Returns up to 8 `MediaCandidate` items: `{ tmdbId, mediaType, title, year, overview (truncated ~200 chars), availability: "unknown" | "pending" | "processing" | "partially_available" | "available" | "blocklisted" | "deleted" | "not_requested" }`. Availability comes from `mediaInfo.status` (1 unknown, 2 pending, 3 processing, 4 partially available, 5 available, 6 blocklisted, 7 deleted). No `mediaInfo` means not requested; a code outside that list maps to unknown.
 
 `get_media_recommendations`
 Input: `{ tmdbId: number, mediaType: "movie" | "tv", limit?: number }`. Calls `/movie/{id}/recommendations` and `/movie/{id}/similar` (or TV equivalents), merges, de-duplicates by TMDB id, ranks by vote average with a vote-count floor, returns `MediaCandidate[]`. The model resolves "movies like Fight Club" by calling `search_media` first.
@@ -209,7 +210,7 @@ Each MR must merge on its own and leave `pnpm lint:ci`, `pnpm typecheck`, and `p
 | 1 | Repo hygiene and locked-down scaffold | done (2026-09-03) |
 | 2 | Telegram channel with allowlist | done (2026-10-19) |
 | 3 | Seerr client | done (2026-10-20) |
-| 3a | Validate Seerr responses with zod | todo |
+| 3a | Validate Seerr responses with zod | done (2026-10-20) |
 | 4 | Search and recommendation tools | todo |
 | 5 | Request tool with confirmation and tagging | todo |
 | 6 | Deployment runbook and first production deploy | todo |
@@ -269,6 +270,8 @@ The client casts each JSON body to its declared type, so a field Seerr renames o
 - Require only what the logic depends on: `id`, `mediaType`, `title` or `name`, and `mediaInfo.status` on results; tag `id` and `label`; request `id`, `status` and `tags`. Everything else is optional or nullable. TMDB already sends `posterPath: null`, empty `releaseDate` strings and missing overviews, and an over-strict schema would turn a harmless upstream change into every search failing.
 - Client tests answer with realistic fixtures instead of `{ ok: true }`, and gain a test per required field that a response without it throws.
 
+As built: Seerr maps every TMDB type it doesn't recognise to a person-shaped result that keeps TMDB's `media_type` (3.4.1, `mapSearchResults`), so `/search` can return any `mediaType`, `collection` included. The search schema relabels anything other than `movie` or `tv` before a discriminated union runs, then drops it. A plain `z.union` would have reported a malformed movie only as "Invalid input at results[0]"; the discriminated union names the field. `toCandidate` therefore takes only movie and TV results and no longer returns `null`. Parsed types are mutable (`z.output`), which is harmless for freshly parsed data.
+
 Rejected: checking only the three decision fields (availability, tag ids, created-request tags) inside MR 4 and MR 5. Less code, but the checks would be scattered across the tools and every new tool would have to remember them.
 
 ### MR 4: Search and recommendation tools
@@ -293,6 +296,7 @@ Read first: `tools/human-in-the-loop.md` (the `approval` section), `guides/sessi
 - Set the approval text with the object form `approval: { prompt: ({ input }) => ... }` (eve 0.79), formatted as "Request Title (Year)?" from the tool input. This replaces the earlier plan to override the `input.requested` handler; only fall back to an override if the spike shows the prompt still renders badly.
 - Spike inside this MR, two questions. First, how the approval renders on Telegram (button labels, and whether the tool input appears alongside the prompt). Second, what happens to an abandoned approval: if the user ignores the prompt and sends an unrelated message hours later, does eve treat it as a decline, keep the prompt pending, or steer the turn? The docs (`tools/human-in-the-loop.md`) say a typed reply matching `approve` or `cancel` answers it and that steering messages withdraw `ctx.ask()` questions, but don't say what an unrelated message does to a pending approval. Record the answer here and make the instructions match.
 - Approval semantics to rely on as of eve 0.81.1, all from the changelog: without an `approval.response` policy only the person whose turn requested the approval can answer it (0.72); the approved call runs as the requester, so `requireRequester` sees the requester's identity (0.78); the first answer decides, so a double tap or Cancel then Approve stays cancelled (0.81). If a response policy is ever added, it receives `response.decision` (`"approve"` or `"cancel"`) and `response.principal` (0.69).
+- The client's `createRequest` throws when Seerr's answer has no `tags` array (MR 3a). By then Seerr has already accepted the request, so the tool must report it as "requested, but the tags could not be confirmed" and not as a failure the user should retry.
 - Unit tests: the request body sent to the stub carries exactly `[seerrTagId, userTagId]`, and the tool refuses when either is missing.
 - Evals: happy path with `session.respond` approving; decline path where the request is not submitted; already-available path where the tool refuses before approval; missing-tag path for each of the two tags. Also assert that a reply naming a title wraps it in `<b>`: eve's per-message Telegram context asks for plain text, and `10-core.md` overrides that only by instruction.
 

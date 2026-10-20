@@ -1,5 +1,18 @@
+import { z } from 'zod';
+
 import { ApiError } from './api-error';
 import { REQUEST_TIMEOUT_MS } from './constants';
+import {
+  createdRequestSchema,
+  movieDetailsSchema,
+  moviePageSchema,
+  requestPageSchema,
+  searchPageSchema,
+  serviceServerDetailsSchema,
+  serviceServersSchema,
+  tvDetailsSchema,
+  tvPageSchema,
+} from './schemas';
 import type { Client } from './types';
 
 type Query = Readonly<Record<string, string | number>>;
@@ -52,10 +65,13 @@ const readErrorMessage = async (response: Response): Promise<string> => {
 /**
  * Builds a client for the Seerr v1 API at `baseUrl` (the instance root, without
  * `/api/v1`), authenticated with the `X-Api-Key` header. Non-2xx responses
- * throw an `ApiError`. A call that takes longer than `timeoutMs`, from sending
- * the request to reading the whole body, is aborted and throws. Seerr sits
- * behind a tunnel that can stall, and a hung call would hold the agent's turn.
- * Pass `fetch` to substitute the transport in tests.
+ * throw an `ApiError`. Every answer is parsed with its schema from
+ * `schemas.ts`, and one that does not match throws naming the path and the
+ * field, so a Seerr upgrade that renames a field fails at the call rather than
+ * as an `undefined` further on. A call that takes longer than `timeoutMs`,
+ * from sending the request to reading the whole body, is aborted and throws.
+ * Seerr sits behind a tunnel that can stall, and a hung call would hold the
+ * agent's turn. Pass `fetch` to substitute the transport in tests.
  */
 export const createClient = ({
   apiKey,
@@ -70,13 +86,14 @@ export const createClient = ({
 }): Client => {
   const root = `${baseUrl.replace(/\/+$/u, '')}/api/v1`;
 
-  const call = async <T>(
+  const call = async <T extends z.ZodType>(
     path: string,
+    schema: T,
     {
       body,
       query = {},
     }: { readonly body?: unknown; readonly query?: Query } = {},
-  ): Promise<T> => {
+  ): Promise<z.output<T>> => {
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'X-Api-Key': apiKey,
@@ -103,7 +120,16 @@ export const createClient = ({
         throw new ApiError(response.status, await readErrorMessage(response));
       }
 
-      return (await response.json()) as T;
+      const parsed = schema.safeParse(await response.json());
+
+      if (!parsed.success) {
+        throw new Error(
+          `Seerr's answer to ${path} did not have the expected shape:\n${z.prettifyError(parsed.error)}`,
+          { cause: parsed.error },
+        );
+      }
+
+      return parsed.data;
     } catch (error) {
       if (isTimeout(error)) {
         throw new Error(`Seerr did not answer ${path} within ${timeoutMs} ms`, {
@@ -116,18 +142,22 @@ export const createClient = ({
   };
 
   return {
-    createRequest: body => call('/request', { body }),
-    listRequests: (params = {}) => call('/request', { query: { ...params } }),
-    movie: id => call(`/movie/${id}`),
-    movieRecommendations: id => call(`/movie/${id}/recommendations`),
-    movieSimilar: id => call(`/movie/${id}/similar`),
-    radarrServer: id => call(`/service/radarr/${id}`),
-    radarrServers: () => call('/service/radarr'),
-    search: query => call('/search', { query: { query } }),
-    sonarrServer: id => call(`/service/sonarr/${id}`),
-    sonarrServers: () => call('/service/sonarr'),
-    tv: id => call(`/tv/${id}`),
-    tvRecommendations: id => call(`/tv/${id}/recommendations`),
-    tvSimilar: id => call(`/tv/${id}/similar`),
+    createRequest: body => call('/request', createdRequestSchema, { body }),
+    listRequests: (params = {}) =>
+      call('/request', requestPageSchema, { query: { ...params } }),
+    movie: id => call(`/movie/${id}`, movieDetailsSchema),
+    movieRecommendations: id =>
+      call(`/movie/${id}/recommendations`, moviePageSchema),
+    movieSimilar: id => call(`/movie/${id}/similar`, moviePageSchema),
+    radarrServer: id =>
+      call(`/service/radarr/${id}`, serviceServerDetailsSchema),
+    radarrServers: () => call('/service/radarr', serviceServersSchema),
+    search: query => call('/search', searchPageSchema, { query: { query } }),
+    sonarrServer: id =>
+      call(`/service/sonarr/${id}`, serviceServerDetailsSchema),
+    sonarrServers: () => call('/service/sonarr', serviceServersSchema),
+    tv: id => call(`/tv/${id}`, tvDetailsSchema),
+    tvRecommendations: id => call(`/tv/${id}/recommendations`, tvPageSchema),
+    tvSimilar: id => call(`/tv/${id}/similar`, tvPageSchema),
   };
 };

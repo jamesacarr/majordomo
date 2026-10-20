@@ -1,5 +1,24 @@
-// Hand-written shapes for the parts of the Seerr v1 API the tools use. Checked
-// against the Seerr 3.4.1 source, which the published OpenAPI spec trails.
+import type { z } from 'zod';
+
+import type {
+  createdRequestSchema,
+  mediaInfoSchema,
+  mediaRequestSchema,
+  movieDetailsSchema,
+  moviePageSchema,
+  movieResultSchema,
+  requestPageSchema,
+  searchPageSchema,
+  serviceServerDetailsSchema,
+  serviceServerSchema,
+  serviceTagSchema,
+  tvDetailsSchema,
+  tvPageSchema,
+  tvResultSchema,
+} from './schemas';
+
+// Response types come from the schemas in `schemas.ts`, which validate every
+// Seerr answer. Request inputs and what the model sees are written by hand.
 
 export type MediaType = 'movie' | 'tv';
 
@@ -14,88 +33,20 @@ export type Availability =
   | 'deleted'
   | 'not_requested';
 
-/** Seerr's record of a title it already knows about. Absent until first requested or synced. */
-export interface MediaInfo {
-  readonly status: number;
-  readonly tmdbId: number;
-}
-
-export interface MovieResult {
-  readonly id: number;
-  readonly mediaInfo?: MediaInfo;
-  readonly mediaType: 'movie';
-  readonly overview?: string;
-  readonly posterPath?: string | null;
-  readonly releaseDate?: string;
-  readonly title: string;
-  readonly voteAverage?: number;
-  readonly voteCount?: number;
-}
-
-export interface TvResult {
-  readonly firstAirDate?: string;
-  readonly id: number;
-  readonly mediaInfo?: MediaInfo;
-  readonly mediaType: 'tv';
-  readonly name: string;
-  readonly overview?: string;
-  readonly posterPath?: string | null;
-  readonly voteAverage?: number;
-  readonly voteCount?: number;
-}
-
-export interface PersonResult {
-  readonly id: number;
-  readonly mediaType: 'person';
-  readonly name: string;
-}
-
-export type SearchResult = MovieResult | TvResult | PersonResult;
-
-export interface Page<T> {
-  readonly page: number;
-  readonly results: readonly T[];
-  readonly totalPages: number;
-  readonly totalResults: number;
-}
-
-/** `/movie/{id}` returns many more fields; only these are read. */
-export interface MovieDetails {
-  readonly id: number;
-  readonly mediaInfo?: MediaInfo;
-  readonly overview?: string;
-  readonly releaseDate?: string;
-  readonly title: string;
-}
-
-/** `/tv/{id}` returns many more fields; only these are read. */
-export interface TvDetails {
-  readonly firstAirDate?: string;
-  readonly id: number;
-  readonly mediaInfo?: MediaInfo;
-  readonly name: string;
-  readonly overview?: string;
-  readonly seasons?: readonly { readonly seasonNumber: number }[];
-}
-
-/** A Radarr or Sonarr server as Seerr lists it under `/service/radarr` or `/service/sonarr`. */
-export interface ServiceServer {
-  readonly id: number;
-  readonly is4k: boolean;
-  readonly isDefault: boolean;
-  readonly name: string;
-}
-
-export interface ServiceTag {
-  readonly id: number;
-  readonly label: string;
-}
-
-/** `/service/{radarr,sonarr}/{id}`. The spec omits `tags`, but Seerr 3.4.1 returns the server's tags here. */
-export interface ServiceServerDetails {
-  readonly server: ServiceServer;
-  readonly tags: readonly ServiceTag[];
-}
+export type MediaInfo = z.output<typeof mediaInfoSchema>;
+export type MovieResult = z.output<typeof movieResultSchema>;
+export type TvResult = z.output<typeof tvResultSchema>;
+export type SearchPage = z.output<typeof searchPageSchema>;
+export type MoviePage = z.output<typeof moviePageSchema>;
+export type TvPage = z.output<typeof tvPageSchema>;
+export type MovieDetails = z.output<typeof movieDetailsSchema>;
+export type TvDetails = z.output<typeof tvDetailsSchema>;
+export type ServiceServer = z.output<typeof serviceServerSchema>;
+export type ServiceTag = z.output<typeof serviceTagSchema>;
+export type ServiceServerDetails = z.output<typeof serviceServerDetailsSchema>;
+export type MediaRequest = z.output<typeof mediaRequestSchema>;
+export type CreatedRequest = z.output<typeof createdRequestSchema>;
+export type RequestPage = z.output<typeof requestPageSchema>;
 
 /** `POST /request`. `tags` is undocumented in the spec but read by `MediaRequest.request` in 3.4.1. */
 export interface CreateRequestBody {
@@ -122,39 +73,21 @@ export interface ListRequestsParams {
   readonly take?: number;
 }
 
-/** A request as `POST /request` and `GET /request` return it. `status`: 1 pending approval, 2 approved, 3 declined, 4 failed, 5 completed. */
-export interface MediaRequest {
-  readonly createdAt: string;
-  readonly id: number;
-  readonly media: MediaInfo & { readonly mediaType: MediaType };
-  readonly status: number;
-  readonly tags?: readonly number[] | null;
-  readonly type: MediaType;
-}
-
-export interface RequestPage {
-  readonly pageInfo: {
-    readonly page: number;
-    readonly pages: number;
-    readonly results: number;
-  };
-  readonly results: readonly MediaRequest[];
-}
-
 export interface Client {
-  readonly createRequest: (body: CreateRequestBody) => Promise<MediaRequest>;
+  readonly createRequest: (body: CreateRequestBody) => Promise<CreatedRequest>;
   readonly listRequests: (params?: ListRequestsParams) => Promise<RequestPage>;
   readonly movie: (id: number) => Promise<MovieDetails>;
-  readonly movieRecommendations: (id: number) => Promise<Page<MovieResult>>;
-  readonly movieSimilar: (id: number) => Promise<Page<MovieResult>>;
+  readonly movieRecommendations: (id: number) => Promise<MoviePage>;
+  readonly movieSimilar: (id: number) => Promise<MoviePage>;
   readonly radarrServer: (id: number) => Promise<ServiceServerDetails>;
   readonly radarrServers: () => Promise<readonly ServiceServer[]>;
-  readonly search: (query: string) => Promise<Page<SearchResult>>;
+  /** Only movie and TV results; people, collections and anything else are dropped. */
+  readonly search: (query: string) => Promise<SearchPage>;
   readonly sonarrServer: (id: number) => Promise<ServiceServerDetails>;
   readonly sonarrServers: () => Promise<readonly ServiceServer[]>;
   readonly tv: (id: number) => Promise<TvDetails>;
-  readonly tvRecommendations: (id: number) => Promise<Page<TvResult>>;
-  readonly tvSimilar: (id: number) => Promise<Page<TvResult>>;
+  readonly tvRecommendations: (id: number) => Promise<TvPage>;
+  readonly tvSimilar: (id: number) => Promise<TvPage>;
 }
 
 /** What the media tools hand the model: small, and directly requestable by `tmdbId`. */
