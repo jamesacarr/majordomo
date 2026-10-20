@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-10-20T02:14:16Z
+updated_at: 2026-10-20T03:23:06Z
 status: draft
 ---
 
@@ -92,10 +92,12 @@ agent/
       is-bad-request.ts         isBadRequest: detect eve's HTTP 400 send error
       on-message-completed.ts   onMessageCompleted: HTML send, plain-text retry on 400
     seerr/
-      client.ts                 fetch wrapper with X-Api-Key
-      types.ts                  hand-written types for the fields we use
-      tags.ts                   resolve tag labels -> ids per service (seerr + user)
-      normalise.ts              MovieResult/TvResult -> MediaCandidate
+      constants.ts              SEERR_TAG, AVAILABILITY_BY_STATUS, OVERVIEW_MAX_LENGTH
+      types.ts                  hand-written types for the fields we use, Client, MediaCandidate
+      api-error.ts              ApiError: non-2xx status plus Seerr's message
+      create-client.ts          createClient: fetch wrapper with X-Api-Key
+      resolve-tag-ids.ts        resolveTagIds: tag labels -> ids on the default server
+      to-candidate.ts           toCandidate: MovieResult/TvResult -> MediaCandidate
     media/
       search.ts, recommend.ts, request.ts, list-requests.ts
                                 tool bodies; the files in tools/ only bind schema to these
@@ -128,13 +130,13 @@ Three layers, in order of strength:
 ### Tool contracts
 
 `search_media`
-Input: `{ query: string, mediaType?: "movie" | "tv" }`. Calls `GET /search?query=`. Drops `person` results. Returns up to 8 `MediaCandidate` items: `{ tmdbId, mediaType, title, year, overview (truncated ~200 chars), availability: "unknown" | "pending" | "processing" | "partially_available" | "available" | "deleted" | "not_requested" }`. Availability comes from `mediaInfo.status` (1 unknown, 2 pending, 3 processing, 4 partially available, 5 available, 6 deleted). No `mediaInfo` means not requested.
+Input: `{ query: string, mediaType?: "movie" | "tv" }`. Calls `GET /search?query=`. Drops `person` results. Returns up to 8 `MediaCandidate` items: `{ tmdbId, mediaType, title, year, overview (truncated ~200 chars), availability: "unknown" | "pending" | "processing" | "partially_available" | "available" | "blocklisted" | "deleted" | "not_requested" }`. Availability comes from `mediaInfo.status` (1 unknown, 2 pending, 3 processing, 4 partially available, 5 available, 6 blocklisted, 7 deleted). No `mediaInfo` means not requested; a code outside that list maps to unknown.
 
 `get_media_recommendations`
 Input: `{ tmdbId: number, mediaType: "movie" | "tv", limit?: number }`. Calls `/movie/{id}/recommendations` and `/movie/{id}/similar` (or TV equivalents), merges, de-duplicates by TMDB id, ranks by vote average with a vote-count floor, returns `MediaCandidate[]`. The model resolves "movies like Fight Club" by calling `search_media` first.
 
 `request_media`
-Input: `{ tmdbId: number, mediaType: "movie" | "tv", title: string, year?: number, seasons?: number[] | "all" }`. `title` and `year` exist so the approval prompt is readable; the tool trusts only `tmdbId`. `approval: always()`. Steps inside `execute`: read requester from `ctx` (fail if absent), fetch details from `/movie/{id}` or `/tv/{id}` to get the real title, refuse if already available or already requested, resolve both tag ids (`seerr` and the user tag), `POST /request { mediaType, mediaId, seasons?, tags: [seerrTagId, userTagId] }`, return `{ requestId, title, year, status, tags }`. The `seerr` label is a constant in `lib/seerr/tags.ts`, not an env var.
+Input: `{ tmdbId: number, mediaType: "movie" | "tv", title: string, year?: number, seasons?: number[] | "all" }`. `title` and `year` exist so the approval prompt is readable; the tool trusts only `tmdbId`. `approval: always()`. Steps inside `execute`: read requester from `ctx` (fail if absent), fetch details from `/movie/{id}` or `/tv/{id}` to get the real title, refuse if already available or already requested, resolve both tag ids (`seerr` and the user tag), `POST /request { mediaType, mediaId, seasons?, tags: [seerrTagId, userTagId] }`, return `{ requestId, title, year, status, tags }`. The `seerr` label is the `SEERR_TAG` constant in `lib/seerr/constants.ts`, not an env var.
 
 `list_media_requests`
 Input: `{ mine?: boolean, filter?: "pending" | "approved" | "available" | "processing" }`. Calls `GET /request?take=20&sort=added`. When `mine` is true, keeps only requests whose `tags` include the requester's tag id. Returns title, type, status, requested date.
@@ -144,7 +146,11 @@ Input: `{ mine?: boolean, filter?: "pending" | "approved" | "available" | "proce
 - Auth is the `X-Api-Key` header.
 - `POST /request` accepts `tags: number[]` even though the published OpenAPI spec omits it. Confirmed in `server/entity/MediaRequest.ts` at tag `v3.4.1`, the version running at planning time (`let tags = requestBody.tags`). Re-check this line when Seerr is upgraded.
 - Tag ids come from `GET /service/radarr/{id}` and `GET /service/sonarr/{id}`, which return `tags: { id, label }[]` alongside profiles and root folders. The spec under-documents this too.
-- Request status codes: 1 pending approval, 2 approved, 3 declined. Requests made with an admin API key are auto-approved unless Seerr is configured otherwise.
+- Media status codes in 3.4.1 (`server/constants/media.ts`): 1 unknown, 2 pending, 3 processing, 4 partially available, 5 available, 6 blocklisted, 7 deleted. The OpenAPI spec omits blocklisted and so numbers deleted 6; the source wins.
+- Request status codes: 1 pending approval, 2 approved, 3 declined, 4 failed, 5 completed. Requests made with an admin API key are auto-approved unless Seerr is configured otherwise.
+- `/service/radarr/{id}` and `/service/sonarr/{id}` return `{ server, profiles, rootFolders, tags }`; the list endpoints return `{ id, name, is4k, isDefault, ... }` per server (`server/routes/service.ts`, 3.4.1).
+- Errors come back as `{ message, errors }` with the HTTP status (`server/index.ts`).
+- Seerr's request validator rejects raw `!`, `(`, `)` and `*` in query values. Its frontend escapes them on top of `encodeURIComponent` (`encodeURIExtraParams`), and so does the client.
 - Seerr rejects a duplicate request for media that is already requested or available. Check `mediaInfo.status` first anyway so the user gets a clear message instead of an API error.
 
 ### eve facts the implementation relies on
@@ -202,7 +208,7 @@ Each MR must merge on its own and leave `pnpm lint:ci`, `pnpm typecheck`, and `p
 | --- | --- | --- |
 | 1 | Repo hygiene and locked-down scaffold | done (2026-09-03) |
 | 2 | Telegram channel with allowlist | done (2026-10-19) |
-| 3 | Seerr client | todo |
+| 3 | Seerr client | in review (2026-10-20) |
 | 4 | Search and recommendation tools | todo |
 | 5 | Request tool with confirmation and tagging | todo |
 | 6 | Deployment runbook and first production deploy | todo |
@@ -243,10 +249,12 @@ Verify: unit tests, `pnpm build`, and `eve info --json` listing `POST /eve/v1/te
 
 Read first: `concepts/security-model.md` (secrets stay in `process.env`, tools run in the app runtime). Reference the Seerr spec at `https://raw.githubusercontent.com/seerr-team/seerr/develop/seerr-api.yml` for response shapes.
 
-- `agent/lib/seerr/client.ts`: `createSeerrClient({ baseUrl, apiKey, fetch? })` with methods `search(query)`, `movie(id)`, `tv(id)`, `movieRecommendations(id)`, `movieSimilar(id)`, `tvRecommendations(id)`, `tvSimilar(id)`, `createRequest(body)`, `listRequests(params)`, `radarrServers()`, `radarrServer(id)`, `sonarrServers()`, `sonarrServer(id)`. Injectable `fetch` for tests. Non-2xx responses throw a `SeerrError` carrying status and Seerr's message.
+File names follow the one-function-per-file rule, so the plan's original `client.ts`, `tags.ts` and `normalise.ts` became `create-client.ts`, `resolve-tag-ids.ts` and `to-candidate.ts`, and `SeerrError` became `ApiError` in `api-error.ts` (the folder already says Seerr).
+
+- `agent/lib/seerr/create-client.ts`: `createClient({ baseUrl, apiKey, fetch? })` with methods `search(query)`, `movie(id)`, `tv(id)`, `movieRecommendations(id)`, `movieSimilar(id)`, `tvRecommendations(id)`, `tvSimilar(id)`, `createRequest(body)`, `listRequests(params)`, `radarrServers()`, `radarrServer(id)`, `sonarrServers()`, `sonarrServer(id)`. Injectable `fetch` for tests. Non-2xx responses throw an `ApiError` carrying status and Seerr's message. Each call is aborted after `timeoutMs` (default `REQUEST_TIMEOUT_MS`, 10 s), covering the request and the body read, and throws an error naming the path: the tunnel can stall, and a hung call would hold the agent's turn.
 - `agent/lib/seerr/types.ts`: only the fields the tools use.
-- `agent/lib/seerr/normalise.ts`: `toCandidate(result)` mapping `MovieResult`/`TvResult` to `MediaCandidate`, including the `mediaInfo.status` mapping.
-- `agent/lib/seerr/tags.ts`: exports `SEERR_TAG = "seerr"` and `resolveTagIds(client, mediaType, labels)`, which picks the default non-4K server, fetches its tags once, matches each label case-insensitively, and returns `{ ids, missing }` so the caller can report exactly which label is absent.
+- `agent/lib/seerr/to-candidate.ts`: `toCandidate(result)` mapping `MovieResult`/`TvResult` to `MediaCandidate`, including the `mediaInfo.status` mapping.
+- `agent/lib/seerr/constants.ts` exports `SEERR_TAG = "seerr"`; `agent/lib/seerr/resolve-tag-ids.ts` exports `resolveTagIds(client, mediaType, labels)`, which picks the default non-4K server, fetches its tags once, matches each label case-insensitively, and returns `{ ids, missing }` so the caller can report exactly which label is absent.
 
 Tests: each client method builds the right path, query and headers against a fake fetch. Normalisation covers movie, TV, person (dropped), and every status code. Tag resolution covers both labels found, only `seerr` found, only the user tag found, neither found, and no default server.
 
@@ -256,7 +264,7 @@ Read first: `tools/overview.mdx`, `evals/overview.mdx`.
 
 - `agent/lib/media/search.ts`, `agent/lib/media/recommend.ts`, and `agent/lib/media/details.ts` hold the logic with colocated tests. `agent/tools/search_media.ts`, `agent/tools/get_media_recommendations.ts`, and `agent/tools/get_media_details.ts` bind the zod schemas to them.
 - `get_media_details` takes `{ tmdbId, mediaType }` and returns title, year, overview, runtime or season count, genres, top-billed cast, director or creators, and availability from `/movie/{id}` or `/tv/{id}`. It exists so "is that the Christian Bale one?" is answered from data, not memory.
-- `agent/instructions/20-media.md`: the procedure. Search first. If one result clearly matches (title and year agree, or only one non-person result), proceed. If several plausible matches, call `ask_question` with the two or three likeliest options labelled "Title (Year)" (the tool accepts 2 to 3). Availability is part of every search result: when someone asks whether something is on the server, call `search_media` and answer from the `availability` field without offering to request it. When they ask to request something that is already available, say so and stop; if it is pending or processing, say it's on its way and stop. Do not request again in either case. For clarifying questions about a candidate (cast, director, which version), call `get_media_details` before answering. For recommendation questions, search the named title, then call `get_media_recommendations`, and present up to five with one-line reasons. Never use Markdown.
+- `agent/instructions/20-media.md`: the procedure. Search first. If one result clearly matches (title and year agree, or only one non-person result), proceed. If several plausible matches, call `ask_question` with the two or three likeliest options labelled "Title (Year)" (the tool accepts 2 to 3). Availability is part of every search result: when someone asks whether something is on the server, call `search_media` and answer from the `availability` field without offering to request it. When they ask to request something that is already available, say so and stop; if it is pending or processing, say it's on its way and stop. If it is blocklisted, say the server owner has blocked it and stop. Do not request again in either case. For clarifying questions about a candidate (cast, director, which version), call `get_media_details` before answering. For recommendation questions, search the named title, then call `get_media_recommendations`, and present up to five with one-line reasons. Never use Markdown.
 - `evals/evals.config.ts` and first evals: a clear search calls `search_media`; an ambiguous search (for example "Dune") calls `ask_question` and `session.requireInputRequest` sees more than one option; a recommendation question calls both tools; an unrelated request ("what's the weather") calls no tool and declines. Point the eval Seerr URL at a local stub (`agent/lib/media/stub-server.ts`, an HTTP server serving fixture JSON) so evals are deterministic and free of network.
 - Decide whether `ask_question` stays. It gives tap-to-pick buttons for one 4-line binding, but options carry no id, so the model maps the chosen "Title (Year)" label back to a TMDB id from the search results. That mapping is ambiguous when two candidates share a title and year, so add the media type or a distinguishing detail to those labels. Its built-in description also tells the model to end the recommended option's label with "(Recommended)"; `20-media.md` must forbid that for title choices. The alternative is a numbered text list, which `10-core.md` already describes. Typed replies that match an option label or number answer `ask_question` too, so the two differ mainly in buttons. Run the ambiguous-search evals with `ask_question` enabled; if they pass with the text list as well and buttons add nothing, remove `agent/tools/ask_question.ts`. Record the outcome in the Confirmation decision row.
 
