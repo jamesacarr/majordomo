@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-10-20T03:23:06Z
+updated_at: 2026-10-20T03:59:23Z
 status: draft
 ---
 
@@ -150,7 +150,7 @@ Input: `{ mine?: boolean, filter?: "pending" | "approved" | "available" | "proce
 - Request status codes: 1 pending approval, 2 approved, 3 declined, 4 failed, 5 completed. Requests made with an admin API key are auto-approved unless Seerr is configured otherwise.
 - `/service/radarr/{id}` and `/service/sonarr/{id}` return `{ server, profiles, rootFolders, tags }`; the list endpoints return `{ id, name, is4k, isDefault, ... }` per server (`server/routes/service.ts`, 3.4.1).
 - Errors come back as `{ message, errors }` with the HTTP status (`server/index.ts`).
-- Seerr's request validator rejects raw `!`, `(`, `)` and `*` in query values. Its frontend escapes them on top of `encodeURIComponent` (`encodeURIExtraParams`), and so does the client.
+- Seerr validates requests with `express-openapi-validator` 5.6.2, which answers 400 ("must be url encoded") to a raw query value containing any RFC 3986 reserved character. `encodeURIComponent` leaves `!`, `'`, `(`, `)` and `*` unescaped, so the client escapes those too; otherwise a search for "Ocean's Eleven (2001)" fails.
 - Seerr rejects a duplicate request for media that is already requested or available. Check `mediaInfo.status` first anyway so the user gets a clear message instead of an API error.
 
 ### eve facts the implementation relies on
@@ -262,6 +262,7 @@ Tests: each client method builds the right path, query and headers against a fak
 
 Read first: `tools/overview.mdx`, `evals/overview.mdx`.
 
+- `agent/lib/media/get-client.ts`: `getClient(env = process.env)` builds the Seerr client from `SEERR_URL` and `SEERR_API_KEY`, and throws naming the variable when either is missing or blank, so misconfiguration fails at first use like the allowlist does. The env var names go in `lib/media/constants.ts`.
 - `agent/lib/media/search.ts`, `agent/lib/media/recommend.ts`, and `agent/lib/media/details.ts` hold the logic with colocated tests. `agent/tools/search_media.ts`, `agent/tools/get_media_recommendations.ts`, and `agent/tools/get_media_details.ts` bind the zod schemas to them.
 - `get_media_details` takes `{ tmdbId, mediaType }` and returns title, year, overview, runtime or season count, genres, top-billed cast, director or creators, and availability from `/movie/{id}` or `/tv/{id}`. It exists so "is that the Christian Bale one?" is answered from data, not memory.
 - `agent/instructions/20-media.md`: the procedure. Search first. If one result clearly matches (title and year agree, or only one non-person result), proceed. If several plausible matches, call `ask_question` with the two or three likeliest options labelled "Title (Year)" (the tool accepts 2 to 3). Availability is part of every search result: when someone asks whether something is on the server, call `search_media` and answer from the `availability` field without offering to request it. When they ask to request something that is already available, say so and stop; if it is pending or processing, say it's on its way and stop. If it is blocklisted, say the server owner has blocked it and stop. Do not request again in either case. For clarifying questions about a candidate (cast, director, which version), call `get_media_details` before answering. For recommendation questions, search the named title, then call `get_media_recommendations`, and present up to five with one-line reasons. Never use Markdown.
