@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-10-20T04:18:12Z
+updated_at: 2026-10-20T04:19:13Z
 status: draft
 ---
 
@@ -208,7 +208,7 @@ Each MR must merge on its own and leave `pnpm lint:ci`, `pnpm typecheck`, and `p
 | --- | --- | --- |
 | 1 | Repo hygiene and locked-down scaffold | done (2026-09-03) |
 | 2 | Telegram channel with allowlist | done (2026-10-19) |
-| 3 | Seerr client | in review (2026-10-20) |
+| 3 | Seerr client | done (2026-10-20) |
 | 3a | Validate Seerr responses with zod | todo |
 | 4 | Search and recommendation tools | todo |
 | 5 | Request tool with confirmation and tagging | todo |
