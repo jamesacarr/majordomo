@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-10-20T04:37:02Z
+updated_at: 2026-10-20T05:56:22Z
 status: draft
 ---
 
@@ -21,10 +21,10 @@ Work through this document one MR at a time. Each MR section lists the eve doc p
 | Seerr endpoint | An existing Seerr 3.4.1 instance, published over https through a Cloudflare Tunnel that is independent of the agent. `SEERR_URL` points at it; the hostname lives only in `.env` and the Vercel project. | Already running. The agent only needs an API key. |
 | Seerr integration | Hand-authored typed tools over a thin `agent/lib/seerr` client. Not an OpenAPI connection. | The Seerr spec has ~200 operations. Exposing only four tools enforces "nothing unrelated" structurally, and the spec omits the `tags` field we need. |
 | Attribution | Every request carries two Radarr/Sonarr tags: a fixed `seerr` tag and the requester's display name from the allowlist, slugified to lowercase letters, digits and hyphens (`Mary Jane` becomes `mary-jane`). Bot uses one Seerr API key. No Seerr user mapping. | Confirmed 2026-09-03. The `seerr` tag marks everything that came through Seerr regardless of who asked. Slugifying assumes Radarr and Sonarr restrict tag labels to `[a-z0-9-]`; this was not verified. Two names with the same slug are rejected rather than suffixed, because a suffix would depend on who else is listed and could move a tag between people. |
-| Confirmation | Every `request_media` call is gated with eve's `approval: always()`. Ambiguous searches use the built-in `ask_question` tool so the user picks from a keyboard. | Confirmed 2026-09-03. `ask_question` was a default tool then and is opt-in since eve 0.65; it stays enabled, but MR 4 decides whether it earns its place over a numbered text list. |
+| Confirmation | Every `request_media` call is gated with eve's `approval: always()`. Ambiguous searches use the built-in `ask_question` tool so the user picks from a keyboard. | Confirmed 2026-09-03. `ask_question` was a default tool then and is opt-in since eve 0.65. MR 4 kept it: tap-to-pick buttons for a 4-line binding, and the ambiguous-search eval passes with it. MR 8 may replace it with `pick_media`. |
 | Allowlist | JSON in the `MAJORDOMO_ALLOWED_USERS` env var, keyed by Telegram user id. Private chats only. Non-allowlisted messages and all group messages are dropped silently. | Adding a user is an env change, not a deploy. Silence avoids confirming the bot exists to strangers. |
 | Recommendations | Grounded in Seerr's TMDB-backed `/movie/{id}/recommendations`, `/similar` and TV equivalents, not model memory. | Titles come back with TMDB ids and library availability, so each suggestion is directly requestable and never hallucinated. |
-| Model | `minimax/minimax-m3.1-flash` through the AI Gateway, switched from `minimax/minimax-m3` on 2026-10-20. Evals are the gate for switching. | Priced at $0 on the gateway; `minimax-m3` now costs $0.30 / $1.20 per million input/output tokens. See "Model choice" below. |
+| Model | `deepseek/deepseek-v4.1-flash-1017` through the AI Gateway, switched from `minimax/minimax-m3.1-flash` on 2026-10-20 during MR 4. Evals are the gate for switching. | The owner's call, on mixed reviews of minimax-m3.1-flash. Paid, unlike minimax-m3.1-flash, but has no free-tier rate limit, and the five media evals pass with it. See "Model choice" below. |
 | Gateway auth | Production authenticates to the AI Gateway with Vercel OIDC automatically. Local `eve dev` and `eve eval` use `AI_GATEWAY_API_KEY` from `.env`. | No switch needed; the two paths coexist. |
 | Seerr approval | All bot requests are auto-approved, because they arrive through one admin API key. Seerr's per-user quotas and approval rules do not apply. | Confirmed 2026-09-03. Per-user rules, if ever wanted, would live in the bot. |
 | Bots | A separate development bot for `eve dev` and testing. The production bot keeps serving the previous implementation until go-live, when its token moves to Vercel. Wanted, not scheduled: a test bot to verify changes before they reach production, likely by giving the Preview environment its own `TELEGRAM_BOT_TOKEN` and webhook secret and pointing the test bot's webhook at a PR's preview deployment. | Telegram allows one webhook or one poller per token, not both. |
@@ -75,6 +75,7 @@ agent/
                                 each exports disableTool()
     search_media.ts
     get_media_recommendations.ts
+    get_media_details.ts
     request_media.ts            approval: always()
     list_media_requests.ts
   lib/                          all logic lives here; one function per file, named after it
@@ -100,11 +101,15 @@ agent/
       resolve-tag-ids.ts        resolveTagIds: tag labels -> ids on the default server
       to-candidate.ts           toCandidate: MovieResult/TvResult -> MediaCandidate
     media/
-      search.ts, recommend.ts, request.ts, list-requests.ts
+      constants.ts              SEERR_URL_ENV, SEERR_API_KEY_ENV, MAX_CANDIDATES, MIN_VOTE_COUNT, MAX_CAST
+      types.ts                  MediaRef, MediaDetails
+      get-client.ts             getClient: Seerr client from env, throws naming a missing variable
+      search.ts, recommend.ts, details.ts, request.ts, list-requests.ts
                                 tool bodies; the files in tools/ only bind schema to these
-      stub-server.ts            fixture-backed Seerr HTTP stub for evals
 evals/
-  evals.config.ts
+  evals.config.ts               starts the Seerr stub and points SEERR_URL at it
+  seerr-stub.ts                 fixture-backed Seerr HTTP stub on a free loopback port
+  fixtures/seerr.ts             Seerr answers for the titles the evals ask about
   media/*.eval.ts
 docs/
   plan.md                       this file
@@ -174,7 +179,7 @@ A Telegram private chat maps to one eve session, and every model call re-sends t
 
 ```ts
 export default defineAgent({
-  model: "minimax/minimax-m3.1-flash",
+  model: "deepseek/deepseek-v4.1-flash-1017",
   limits: {
     sessionTimeoutMs: 24 * 60 * 60 * 1_000,   // fresh session each day; default is 30 days
     maxInputTokensPerSession: 250_000,         // default is 40 million
@@ -193,13 +198,17 @@ The starting values above are guesses to tune. MR 6 records the first week's gat
 
 ## Model choice
 
-`minimax/minimax-m3.1-flash` is the default because the gateway prices it at $0 (checked against `https://ai-gateway.vercel.sh/v1/models` on 2026-10-20). The risk for this agent is tool-call reliability rather than prose quality: it must chain `search_media`, `ask_question`, and `request_media` correctly, and stop when a request is unrelated. The eval suite in MR 5 is the acceptance test for whichever model is configured.
+`deepseek/deepseek-v4.1-flash-1017` is the default since 2026-10-20, replacing `minimax/minimax-m3.1-flash` at the owner's request. The risk for this agent is tool-call reliability rather than prose quality: it must chain `search_media`, `ask_question`, and `request_media` correctly, and stop when a request is unrelated. The eval suite is the acceptance test for whichever model is configured. All five MR 4 evals pass with it.
 
-Unlike `minimax-m3`, it always reasons, with effort `low` to `max`. eve leaves `reasoning` unset, so the provider default applies. Reasoning tokens are likely to count as output tokens, which would make the 25,000-token `maxOutputTokensPerSession` budget bind sooner; MR 6's first-week usage review checks this. If it binds, set `reasoning: "low"` in `agent.ts` rather than raising the budget, and confirm with the evals.
+Pricing, from `https://ai-gateway.vercel.sh/v1/models` on 2026-10-20: US$0.075 per million input tokens and US$0.30 per million output, with cached input at US$0.0015. Two caveats are unresolved. Peak pricing doubles both rates on weekdays 01:00 to 04:00 and 06:00 to 10:00 UTC, which includes Sydney's evening. And the listing also carries a `us` regional rate six times higher (US$0.45 / US$1.80), with `us` the only region listed; which rate the gateway bills is not clear from the listing. At the session budgets above, the worst case (regional rate at peak) caps one session at about US$0.23 input plus US$0.09 output. MR 6's first-week usage review confirms the actual rate.
 
-$0 models carry two costs the price doesn't show. The gateway rate limits free-tier requests per model and publishes no numbers; a `429` is retried twice by the AI SDK, then the turn fails. And none of them offer zero data retention or a no-training guarantee (`zdr` and `no_training` are `none`), so the provider may keep the household's messages: names and what they watch.
+It reasons, with a toggle and effort `none`, `low`, `high` or `max`. eve leaves `reasoning` unset, so the provider default applies. Reasoning tokens are likely to count as output tokens, which would make the 25,000-token `maxOutputTokensPerSession` budget bind sooner; MR 6's first-week usage review checks this. If it binds, set `reasoning: "low"` in `agent.ts` rather than raising the budget, and confirm with the evals.
 
-Switching is a one-line change in `agent/agent.ts`. If minimax-m3.1-flash fails the evals, the other $0 language models on 2026-10-20 were `nvidia/nemotron-3.5-lightning-free`, `reflection/beam-free`, `poolside/laguna-s-2.1-free` and `stealth/glyph-cluster`; paid fallbacks include `minimax/minimax-m3`. Re-check the model list before choosing, because free pricing changes.
+Data handling: `zdr` and `no_training` are `some`, meaning some of the providers behind it offer zero data retention and no training, not all. minimax-m3.1-flash offered neither.
+
+Deferred on 2026-10-20: falling back to `minimax/minimax-m3.1-flash` when the monthly AI Gateway credits run out. Two ways if it becomes a problem. AI Gateway's `providerOptions.gateway.models` (set through eve's `modelOptions`) tries listed models when every provider of the primary fails, but its docs don't say whether a credit or access rejection counts; test that first by sending a request whose primary the account can't use (`typesafe-ai/jev`) with minimax in `models`. Otherwise, an eve dynamic model resolver can pick minimax from the gateway credits balance. `deepseek/deepseek-v4.1-flash` is not an alias for `-1017`: it is the 2026-09-08 release, with different regional pricing.
+
+Switching is a one-line change in `agent/agent.ts`. `minimax/minimax-m3.1-flash` remains a $0 fallback, at the cost of a 5-requests-per-minute free-tier limit that makes evals run one at a time. Re-check the model list before choosing, because pricing changes.
 
 ## MR stack
 
@@ -211,7 +220,7 @@ Each MR must merge on its own and leave `pnpm lint:ci`, `pnpm typecheck`, and `p
 | 2 | Telegram channel with allowlist | done (2026-10-19) |
 | 3 | Seerr client | done (2026-10-20) |
 | 3a | Validate Seerr responses with zod | done (2026-10-20) |
-| 4 | Search and recommendation tools | todo |
+| 4 | Search and recommendation tools | done (2026-10-20) |
 | 5 | Request tool with confirmation and tagging | todo |
 | 6 | Deployment runbook and first production deploy | todo |
 | 7 | Request listing | todo |
@@ -285,7 +294,18 @@ Read first: `tools/overview.mdx`, `evals/overview.mdx`.
 - `evals/evals.config.ts` and first evals: a clear search calls `search_media`; an ambiguous search (for example "Dune") calls `ask_question` and `session.requireInputRequest` sees more than one option; a recommendation question calls both tools; an unrelated request ("what's the weather") calls no tool and declines. Point the eval Seerr URL at a local stub (`agent/lib/media/stub-server.ts`, an HTTP server serving fixture JSON) so evals are deterministic and free of network.
 - Decide whether `ask_question` stays. It gives tap-to-pick buttons for one 4-line binding, but options carry no id, so the model maps the chosen "Title (Year)" label back to a TMDB id from the search results. That mapping is ambiguous when two candidates share a title and year, so add the media type or a distinguishing detail to those labels. Its built-in description also tells the model to end the recommended option's label with "(Recommended)"; `20-media.md` must forbid that for title choices. The alternative is a numbered text list, which `10-core.md` already describes. Typed replies that match an option label or number answer `ask_question` too, so the two differ mainly in buttons. Run the ambiguous-search evals with `ask_question` enabled; if they pass with the text list as well and buttons add nothing, remove `agent/tools/ask_question.ts`. Record the outcome in the Confirmation decision row.
 
-Verify: `pnpm test` and `eve eval media`.
+Verify: `pnpm test` and `pnpm eval media`.
+
+As built (2026-10-20):
+
+- The stub lives in `evals/seerr-stub.ts` with fixtures in `evals/fixtures/seerr.ts`, not `agent/lib/media/stub-server.ts`. It is eval support, and under `lib/` it would fall inside the 95% coverage gate with no unit tests of its own.
+- `eve eval` loads `.env` before `setup` and again when it starts the agent, and the second load overwrites any variable `.env` names unless the shell set it before `eve eval` started (eve 0.81.1, `cli/dev/environment.js`). Setting `SEERR_URL` inside `setup` therefore loses to `.env`, and the first eval runs reached the real Seerr (read-only searches). The `eval` script in `package.json` now sets `SEERR_URL` to a fixed loopback port and `SEERR_API_KEY` to a dummy key. `setup` starts the stub on that port and throws when `SEERR_URL` is not loopback, so a bare `eve eval` fails closed. MR 5's request evals depend on this guard.
+- Recommendations rank titles under `MIN_VOTE_COUNT` (50) votes after every title over it instead of dropping them, so an obscure title still gets suggestions.
+- `get_media_details` reuses `toCandidate` for the shared fields, so its overview is truncated like the others.
+- The evals use no LLM judge. eve's default judge model, `typesafe-ai/jev`, is not available on the free tier, so the two judge assertions were replaced with deterministic checks: every `<b>` span in a recommendation reply must be Fight Club or a title the tool returned, a reply lists at most five suggestions, and an out-of-scope decline is one or two sentences with no figures.
+- The model moved to `deepseek/deepseek-v4.1-flash-1017` during this MR (see "Model choice"). Under minimax-m3.1-flash the free tier's 5-requests-per-minute limit forced evals to run one at a time; with DeepSeek all five run concurrently in about 15 seconds.
+- The ambiguous-search eval asks "Who's in Dune?" rather than "Can you get Dune?". With requesting not switched on, the model reasonably skipped choosing a Dune it couldn't request; a question whose answer depends on the pick tests disambiguation without that shortcut. MR 5 should add a request-phrased case once requesting exists.
+- `ask_question` stays for now. The ambiguous-search eval passes with it: "Title (Year)" labels, "(2000, TV)" for the miniseries, no "(Recommended)". The numbered-text-list variant was not run. Both models ignore `20-media.md` and name cast or directors in option descriptions from memory (minimax in 2 of 2 runs, DeepSeek in 2 of 3), because the built-in schema asks for "the impact or tradeoff of choosing this option". Telegram doesn't render descriptions, so users don't see it, but it is another reason for MR 8's `pick_media` tool.
 
 ### MR 5: Request tool with confirmation and tagging
 

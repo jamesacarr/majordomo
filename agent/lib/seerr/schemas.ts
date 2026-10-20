@@ -79,21 +79,42 @@ export const moviePageSchema = pageOf(movieResultSchema);
 
 export const tvPageSchema = pageOf(tvResultSchema);
 
+const namedSchema = z.object({ name: z.string() });
+
+/**
+ * Cast and crew as Seerr maps them (`server/models/common.ts`, 3.4.1). TV
+ * cast comes from TMDB's aggregate credits, with each actor's most frequent
+ * role as `character`.
+ */
+const creditsSchema = z.object({
+  cast: z
+    .array(namedSchema.extend({ character: z.string().nullish() }))
+    .nullish(),
+  crew: z.array(namedSchema.extend({ job: z.string().nullish() })).nullish(),
+});
+
 /** `/movie/{id}` returns many more fields; only these are read. */
 export const movieDetailsSchema = z.object({
+  credits: creditsSchema.nullish(),
+  genres: z.array(namedSchema).nullish(),
   id: z.number(),
   mediaInfo: mediaInfoSchema.nullish(),
   overview: z.string().nullish(),
   releaseDate: z.string().nullish(),
+  runtime: z.number().nullish(),
   title: z.string(),
 });
 
 /** `/tv/{id}` returns many more fields; only these are read. */
 export const tvDetailsSchema = z.object({
+  createdBy: z.array(namedSchema).nullish(),
+  credits: creditsSchema.nullish(),
   firstAirDate: z.string().nullish(),
+  genres: z.array(namedSchema).nullish(),
   id: z.number(),
   mediaInfo: mediaInfoSchema.nullish(),
   name: z.string(),
+  numberOfSeasons: z.number().nullish(),
   overview: z.string().nullish(),
   seasons: z.array(z.object({ seasonNumber: z.number() })).nullish(),
 });

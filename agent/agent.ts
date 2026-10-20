@@ -11,5 +11,5 @@ export default defineAgent({
     maxOutputTokensPerSession: 25_000,
     sessionTimeoutMs: ONE_DAY_MS,
   },
-  model: 'minimax/minimax-m3.1-flash',
+  model: 'deepseek/deepseek-v4.1-flash-1017',
 });

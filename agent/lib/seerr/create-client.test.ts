@@ -72,7 +72,7 @@ const seerrAnswer = (url: string, method: string): unknown => {
   }
 
   if (/^\/movie\/\d+$/u.test(path)) {
-    return { ...movieResult, runtime: 136 };
+    return { ...movieResult, budget: 63_000_000 };
   }
 
   if (/^\/tv\/\d+$/u.test(path)) {
@@ -296,6 +296,18 @@ describe('createClient', () => {
       'results',
     ],
     ['movie details without a title', c => c.movie(603), { id: 603 }, 'title'],
+    [
+      'a cast member without a name',
+      c => c.movie(603),
+      { ...movieResult, credits: { cast: [{ character: 'Neo' }] } },
+      'credits.cast[0].name',
+    ],
+    [
+      'a TV creator without a name',
+      c => c.tv(1399),
+      { ...tvResult, createdBy: [{ id: 9 }] },
+      'createdBy[0].name',
+    ],
     ['TV details without a name', c => c.tv(1399), { id: 1399 }, 'name'],
     [
       'a server without isDefault',
