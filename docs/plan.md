@@ -1,12 +1,12 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-10-19T22:52:57Z
+updated_at: 2026-10-20T01:49:45Z
 status: draft
 ---
 
 # majordomo implementation plan
 
-majordomo is a household agent, built on eve 0.50 and deployed to Vercel, that lets an allowlisted set of people request movies and TV shows through Seerr. Every request is confirmed with an inline keyboard before submission and tagged in Radarr/Sonarr with a fixed `seerr` tag plus the requester's name. The structure leaves room for more home capabilities later (deleting media, lighting) without reworking the core.
+majordomo is a household agent, built on eve 0.81 and deployed to Vercel, that lets an allowlisted set of people request movies and TV shows through Seerr. Every request is confirmed with an inline keyboard before submission and tagged in Radarr/Sonarr with a fixed `seerr` tag plus the requester's name. The structure leaves room for more home capabilities later (deleting media, lighting) without reworking the core.
 
 Naming: `majordomo` is the role name for the code, repo, and Vercel project. The Telegram bot's display name is a household name set in BotFather. Telegram shows that name to users; the agent itself never needs to know it, so there is no display-name env var. If the instructions ever need the agent to name itself, write the name into `agent/instructions.md` as ordinary authored content.
 
@@ -61,6 +61,7 @@ Tools in eve are flat files under `agent/tools/` and the filename is the model-f
 ```
 agent/
   agent.ts                      model config only
+  sandbox.ts                    just-bash sandbox; nothing uses it, but builds prepare one
   instructions.md               identity, tone, standing rules (scope refusal, one-line replies)
   instructions/
     10-core.md                  how to talk on Telegram (<b> titles only, no other markup, 4096 cap)
@@ -69,7 +70,8 @@ agent/
     eve.ts                      HTTP channel for dev TUI and evals; [vercelOidc(), localDev()]
     telegram.ts                 binds lib/telegram handlers to telegramChannel
   tools/
-    bash.ts, read_file.ts, write_file.ts, web_fetch.ts, web_search.ts, agent.ts, todo.ts
+    ask_question.ts             opt-in built-in since eve 0.65; renders as Telegram buttons
+    bash.ts, read_file.ts, write_file.ts, web_fetch.ts, web_search.ts, agent.ts
                                 each exports disableTool()
     search_media.ts
     get_media_recommendations.ts
@@ -150,10 +152,12 @@ Input: `{ mine?: boolean, filter?: "pending" | "approved" | "available" | "proce
 - `onMessage` returning `null` drops the update with no reply. `ctx.telegram` is available inside `onMessage` if a reply is ever wanted.
 - `SessionAuthContext.attributes` values must be strings or string arrays.
 - Tools read the caller via `ctx.session.auth.current?.attributes.<key>`. Sessions started from the HTTP channel (dev TUI, evals) will not carry the Telegram attributes, so `lib/require-requester.ts` falls back to `MAJORDOMO_DEV_USER` only when `EVE_DEV=1`, and fails otherwise.
-- Built-in tools are disabled per slot by exporting `disableTool()` from `agent/tools/<slug>.ts`. A typo in the slug fails the build.
+- Built-in tools are disabled per slot by exporting `disableTool()` from `agent/tools/<slug>.ts`. A typo in the slug fails the build. So does disabling a tool that is not a default: since eve 0.65 `todo` no longer exists and `ask_question` is opt-in, enabled by exporting `askQuestion()` from `agent/tools/ask_question.ts`.
+- `ask_question` takes one `question` and 2 to 3 options of `{ label, description }`, with no option id, and returns `{ status: "answered", answer }` where `answer` is the chosen label or typed text (eve 0.81.1).
+- Production builds prepare a sandbox template eagerly, even when no tool uses the sandbox. Without `agent/sandbox.ts`, eve picks Vercel Sandbox on Vercel and Docker, microsandbox or just-bash locally, and a local build fails when microsandbox is chosen but not installed. `agent/sandbox.ts` pins just-bash so every build prepares it in-process.
 - eve replays interrupted tool steps, so `request_media` must tolerate a re-run: the availability check plus Seerr's own duplicate rejection cover this.
 - Default Telegram delivery sends plain text with no `parse_mode`. `lib/telegram/on-message-completed.ts` replaces it with an HTML send and a plain-text fallback; the instructions allow `<b>` and nothing else.
-- `TelegramMessageBody` omits `parse_mode`, but eve spreads the body into `sendMessage` unchanged, so a wider object type passes it through. `channel.telegram.post` splits text over 4096 characters, but sends every chunk after the first with only `text` (and `ephemeral_message_parameters`), dropping `parse_mode` (unchanged in eve 0.81.0). `on-message-completed.ts` therefore sends any reply whose escaped HTML exceeds `TELEGRAM_MESSAGE_TEXT_MAX_LENGTH` as plain text.
+- `TelegramMessageBody` omits `parse_mode`, but eve spreads the body into `sendMessage` unchanged, so a wider object type passes it through. `channel.telegram.post` splits text over 4096 characters, but sends every chunk after the first with only `text` (and `ephemeral_message_parameters`), dropping `parse_mode` (unchanged in eve 0.81.1). `on-message-completed.ts` therefore sends any reply whose escaped HTML exceeds `TELEGRAM_MESSAGE_TEXT_MAX_LENGTH` as plain text.
 - Missing `TELEGRAM_WEBHOOK_SECRET_TOKEN` or `TELEGRAM_BOT_TOKEN` is not a build or boot error. Verification fails per request with a logged warning and a 401; sends throw when first attempted.
 - eve does not call `setWebhook`; it is a one-off curl in the runbook.
 
@@ -248,8 +252,8 @@ Read first: `tools/overview.mdx`, `evals/overview.mdx`.
 
 - `agent/lib/media/search.ts`, `agent/lib/media/recommend.ts`, and `agent/lib/media/details.ts` hold the logic with colocated tests. `agent/tools/search_media.ts`, `agent/tools/get_media_recommendations.ts`, and `agent/tools/get_media_details.ts` bind the zod schemas to them.
 - `get_media_details` takes `{ tmdbId, mediaType }` and returns title, year, overview, runtime or season count, genres, top-billed cast, director or creators, and availability from `/movie/{id}` or `/tv/{id}`. It exists so "is that the Christian Bale one?" is answered from data, not memory.
-- `agent/instructions/20-media.md`: the procedure. Search first. If one result clearly matches (title and year agree, or only one non-person result), proceed. If several plausible matches, call `ask_question` with up to five options labelled "Title (Year)". Availability is part of every search result: when someone asks whether something is on the server, call `search_media` and answer from the `availability` field without offering to request it. When they ask to request something that is already available, say so and stop; if it is pending or processing, say it's on its way and stop. Do not request again in either case. For clarifying questions about a candidate (cast, director, which version), call `get_media_details` before answering. For recommendation questions, search the named title, then call `get_media_recommendations`, and present up to five with one-line reasons. Never use Markdown.
-- `evals/evals.config.ts` and first evals: a clear search calls `search_media`; an ambiguous search (for example "Dune") calls `ask_question` and `t.requireInputRequest` sees more than one option; a recommendation question calls both tools; an unrelated request ("what's the weather") calls no tool and declines. Point the eval Seerr URL at a local stub (`agent/lib/media/stub-server.ts`, an HTTP server serving fixture JSON) so evals are deterministic and free of network.
+- `agent/instructions/20-media.md`: the procedure. Search first. If one result clearly matches (title and year agree, or only one non-person result), proceed. If several plausible matches, call `ask_question` with the two or three likeliest options labelled "Title (Year)" (the tool accepts 2 to 3). Availability is part of every search result: when someone asks whether something is on the server, call `search_media` and answer from the `availability` field without offering to request it. When they ask to request something that is already available, say so and stop; if it is pending or processing, say it's on its way and stop. Do not request again in either case. For clarifying questions about a candidate (cast, director, which version), call `get_media_details` before answering. For recommendation questions, search the named title, then call `get_media_recommendations`, and present up to five with one-line reasons. Never use Markdown.
+- `evals/evals.config.ts` and first evals: a clear search calls `search_media`; an ambiguous search (for example "Dune") calls `ask_question` and `session.requireInputRequest` sees more than one option; a recommendation question calls both tools; an unrelated request ("what's the weather") calls no tool and declines. Point the eval Seerr URL at a local stub (`agent/lib/media/stub-server.ts`, an HTTP server serving fixture JSON) so evals are deterministic and free of network.
 
 Verify: `pnpm test` and `eve eval media`.
 
@@ -281,6 +285,8 @@ Verify: the smoke test checklist in the runbook, ticked off with the date. One w
 - Evals for both phrasings.
 
 ### MR 8: Posters and summaries on disambiguation and confirmation
+
+Needs redesign before starting: since eve 0.65, `ask_question` options have no `id` (only `label` and `description`), so the handler below can no longer key candidates by TMDB id. Matching on the "Title (Year)" label is one option; decide when this MR is picked up.
 
 eve's default Telegram renderer shows a question as the prompt text plus one button per option label. Option `description` is not rendered, and nothing carries images. This MR replaces the `input.requested` handler so that choosing between titles, and confirming a request, shows each candidate's poster and a one-line summary.
 
