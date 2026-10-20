@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { onMessageCompleted } from './on-message-completed';
 
 const completed = (
-  message: string | null,
+  message: string,
   finishReason: 'stop' | 'tool-calls' = 'stop',
 ) => ({
   finishReason,
@@ -86,7 +86,6 @@ describe('onMessageCompleted', () => {
       channelWith(post),
       session,
     );
-    await onMessageCompleted(completed(null), channelWith(post), session);
     await onMessageCompleted(completed(''), channelWith(post), session);
 
     expect(post).not.toHaveBeenCalled();

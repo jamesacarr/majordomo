@@ -3,4 +3,9 @@ allowBuilds:
   sharp: false
 
 minimumReleaseAgeExclude:
-  - eve@0.50.0
+  - eve@0.81.1
+
+# Optional native codecs for just-bash; the sandbox is never used, so skip them.
+ignoredOptionalDependencies:
+  - '@mongodb-js/zstd'
+  - node-liblzma
