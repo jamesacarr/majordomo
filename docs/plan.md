@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-10-20T05:56:22Z
+updated_at: 2026-10-20T05:57:51Z
 status: draft
 ---
 
@@ -21,7 +21,7 @@ Work through this document one MR at a time. Each MR section lists the eve doc p
 | Seerr endpoint | An existing Seerr 3.4.1 instance, published over https through a Cloudflare Tunnel that is independent of the agent. `SEERR_URL` points at it; the hostname lives only in `.env` and the Vercel project. | Already running. The agent only needs an API key. |
 | Seerr integration | Hand-authored typed tools over a thin `agent/lib/seerr` client. Not an OpenAPI connection. | The Seerr spec has ~200 operations. Exposing only four tools enforces "nothing unrelated" structurally, and the spec omits the `tags` field we need. |
 | Attribution | Every request carries two Radarr/Sonarr tags: a fixed `seerr` tag and the requester's display name from the allowlist, slugified to lowercase letters, digits and hyphens (`Mary Jane` becomes `mary-jane`). Bot uses one Seerr API key. No Seerr user mapping. | Confirmed 2026-09-03. The `seerr` tag marks everything that came through Seerr regardless of who asked. Slugifying assumes Radarr and Sonarr restrict tag labels to `[a-z0-9-]`; this was not verified. Two names with the same slug are rejected rather than suffixed, because a suffix would depend on who else is listed and could move a tag between people. |
-| Confirmation | Every `request_media` call is gated with eve's `approval: always()`. Ambiguous searches use the built-in `ask_question` tool so the user picks from a keyboard. | Confirmed 2026-09-03. `ask_question` was a default tool then and is opt-in since eve 0.65. MR 4 kept it: tap-to-pick buttons for a 4-line binding, and the ambiguous-search eval passes with it. MR 8 may replace it with `pick_media`. |
+| Confirmation | Every `request_media` call is gated with eve's `approval: always()`. Ambiguous searches ask the user to pick from a keyboard, through `pick_media` from MR 4a. | Confirmed 2026-09-03. `ask_question` was a default tool then and is opt-in since eve 0.65. MR 4 kept it; MR 4a replaces it with `pick_media`, which returns an exact TMDB id and builds its labels from Seerr data. |
 | Allowlist | JSON in the `MAJORDOMO_ALLOWED_USERS` env var, keyed by Telegram user id. Private chats only. Non-allowlisted messages and all group messages are dropped silently. | Adding a user is an env change, not a deploy. Silence avoids confirming the bot exists to strangers. |
 | Recommendations | Grounded in Seerr's TMDB-backed `/movie/{id}/recommendations`, `/similar` and TV equivalents, not model memory. | Titles come back with TMDB ids and library availability, so each suggestion is directly requestable and never hallucinated. |
 | Model | `deepseek/deepseek-v4.1-flash-1017` through the AI Gateway, switched from `minimax/minimax-m3.1-flash` on 2026-10-20 during MR 4. Evals are the gate for switching. | The owner's call, on mixed reviews of minimax-m3.1-flash. Paid, unlike minimax-m3.1-flash, but has no free-tier rate limit, and the five media evals pass with it. See "Model choice" below. |
@@ -48,8 +48,8 @@ All five are resolved. Kept for the reasoning; reopen by editing the entry.
 
 1. Telegram posts an update to `POST /eve/v1/telegram`. eve verifies the secret token header.
 2. `onMessage` (`lib/telegram/create-on-message.ts`, wired up by `agent/channels/telegram.ts`) drops the update unless the chat is private and `message.from.id` is in the allowlist. Otherwise it returns a `SessionAuthContext` whose attributes carry the user's display name and tag, plus a `requester_name` context line so the model can address them by name.
-3. The model runs with the media instructions and four tools. `search_media` returns normalised candidates with TMDB ids and availability.
-4. If more than one plausible match, the model calls the built-in `ask_question` with the candidates. Telegram renders inline-keyboard buttons.
+3. The model runs with the media instructions and its media tools. `search_media` returns normalised candidates with TMDB ids and availability.
+4. If more than one plausible match, the model calls `pick_media` with the candidates (MR 4a). Telegram renders inline-keyboard buttons, and the tool returns the chosen TMDB id.
 5. The model calls `request_media` with the chosen TMDB id. eve pauses for approval before `execute` runs. Telegram renders approve/cancel buttons.
 6. On approval, `request_media` reads the requester's tag from `ctx.session.auth.current.attributes`, resolves the ids of the `seerr` tag and the user tag on the default Radarr or Sonarr server, and posts to Seerr `/request` with `tags: [seerrTagId, userTagId]`.
 7. The reply reports the title, year, and Seerr's status (pending approval or approved, depending on Seerr's own rules for the API key's user).
@@ -70,12 +70,12 @@ agent/
     eve.ts                      HTTP channel for dev TUI and evals; [vercelOidc(), localDev()]
     telegram.ts                 binds lib/telegram handlers to telegramChannel
   tools/
-    ask_question.ts             opt-in built-in since eve 0.65; renders as Telegram buttons
     bash.ts, read_file.ts, write_file.ts, web_fetch.ts, web_search.ts, agent.ts
                                 each exports disableTool()
     search_media.ts
     get_media_recommendations.ts
     get_media_details.ts
+    pick_media.ts               workflow tool; ctx.ask select between titles (MR 4a)
     request_media.ts            approval: always()
     list_media_requests.ts
   lib/                          all logic lives here; one function per file, named after it
@@ -105,6 +105,7 @@ agent/
       types.ts                  MediaRef, MediaDetails
       get-client.ts             getClient: Seerr client from env, throws naming a missing variable
       search.ts, recommend.ts, details.ts, request.ts, list-requests.ts
+      to-pick-options.ts        toPickOptions: details -> unique "Title (Year)" options (MR 4a)
                                 tool bodies; the files in tools/ only bind schema to these
 evals/
   evals.config.ts               starts the Seerr stub and points SEERR_URL at it
@@ -143,6 +144,9 @@ Input: `{ tmdbId: number, mediaType: "movie" | "tv", limit?: number }`. Calls `/
 
 `request_media`
 Input: `{ tmdbId: number, mediaType: "movie" | "tv", title: string, year?: number, seasons?: number[] | "all" }`. `title` and `year` exist so the approval prompt is readable; the tool trusts only `tmdbId`. `approval: always()`. Steps inside `execute`: read requester from `ctx` (fail if absent), fetch details from `/movie/{id}` or `/tv/{id}` to get the real title, refuse if already available or already requested, resolve both tag ids (`seerr` and the user tag), `POST /request { mediaType, mediaId, seasons?, tags: [seerrTagId, userTagId] }`, return `{ requestId, title, year, status, tags }`. The `seerr` label is the `SEERR_TAG` constant in `lib/seerr/constants.ts`, not an env var.
+
+`pick_media`
+Input: `{ candidates: { tmdbId: number, mediaType: "movie" | "tv" }[] }`, 2 to 3 entries, from `search_media` or `get_media_recommendations` results. A workflow tool: fetches each candidate's details in a step, asks with `ctx.ask({ display: "select", allowFreeform: true })`, and returns `{ status: "chosen", tmdbId, mediaType, title, year }`, `{ status: "replied", text }` for a typed reply that matches no option, or `{ status: "cancelled" }`. Option ids are `movie:841` or `tv:1910`, because TMDB numbers movies and TV shows separately.
 
 `list_media_requests`
 Input: `{ mine?: boolean, filter?: "pending" | "approved" | "available" | "processing" }`. Calls `GET /request?take=20&sort=added`. When `mine` is true, keeps only requests whose `tags` include the requester's tag id. Returns title, type, status, requested date.
@@ -221,6 +225,7 @@ Each MR must merge on its own and leave `pnpm lint:ci`, `pnpm typecheck`, and `p
 | 3 | Seerr client | done (2026-10-20) |
 | 3a | Validate Seerr responses with zod | done (2026-10-20) |
 | 4 | Search and recommendation tools | done (2026-10-20) |
+| 4a | Pick between titles with `pick_media` | todo |
 | 5 | Request tool with confirmation and tagging | todo |
 | 6 | Deployment runbook and first production deploy | todo |
 | 7 | Request listing | todo |
@@ -307,6 +312,31 @@ As built (2026-10-20):
 - The ambiguous-search eval asks "Who's in Dune?" rather than "Can you get Dune?". With requesting not switched on, the model reasonably skipped choosing a Dune it couldn't request; a question whose answer depends on the pick tests disambiguation without that shortcut. MR 5 should add a request-phrased case once requesting exists.
 - `ask_question` stays for now. The ambiguous-search eval passes with it: "Title (Year)" labels, "(2000, TV)" for the miniseries, no "(Recommended)". The numbered-text-list variant was not run. Both models ignore `20-media.md` and name cast or directors in option descriptions from memory (minimax in 2 of 2 runs, DeepSeek in 2 of 3), because the built-in schema asks for "the impact or tradeoff of choosing this option". Telegram doesn't render descriptions, so users don't see it, but it is another reason for MR 8's `pick_media` tool.
 
+### MR 4a: Pick between titles with `pick_media`
+
+Added 2026-10-20, brought forward from MR 8. Starts once MR 4 merges and lands before MR 5, so the request flow is built once, on an exact TMDB id.
+
+`ask_question` has two problems MR 4's evals showed. The model writes the labels and descriptions, and it puts cast and directors in descriptions from memory, against `20-media.md`, because the built-in schema asks for "the impact or tradeoff of choosing this option". And the answer is a label the model has to map back to a TMDB id, which is ambiguous when two candidates share one. In MR 5 that mapping decides what gets requested. The approval prompt would catch a wrong mapping, but the instructions and evals would need rewriting when MR 8 replaced `ask_question` anyway.
+
+Read first: `tools/workflows.mdx` (rules, `ctx.ask`, "Stop early for a new message", semantics) and `tools/human-in-the-loop.md`.
+
+- `agent/tools/pick_media.ts`: `defineWorkflowTool` with an `execute` body starting `"use workflow"`. It fetches each candidate's details in a `"use step"` function, because `getClient` reads `process.env` and the body is replayed. Then `ctx.ask({ prompt, display: "select", allowFreeform: true, options })` with option ids `<mediaType>:<tmdbId>`. The step returns only the plain fields the options need, since step results are serialised.
+- `agent/lib/media/to-pick-options.ts`: `toPickOptions(details[])` builds the options. Label "Title (Year)"; when two labels collide, add ", TV" to TV entries; if they still collide, append the director or first creator. Description: type, year, and director or creators, all from Seerr data. Colocated tests cover the collision rules and a title without a year.
+- Answers: `answered` with an `optionId` maps back to the candidate and returns `chosen`. A typed reply that matches no option returns `replied` with the text, so the model can interpret "the one with Kyle MacLachlan" through `get_media_details`. `cancelled` (a steering message withdrew the question) and `unavailable` both return `{ status: "cancelled" }`, and the model reads the new message next.
+- Remove `agent/tools/ask_question.ts`, so the model has one way to ask.
+- `20-media.md`: replace the `ask_question` guidance with `pick_media` and drop the label-mapping rule. `chosen` carries the tmdbId and mediaType to use next.
+- Evals: ambiguous-search requires the `pick_media` input request with `optionIds` exactly `movie:438631`, `movie:841`, `tv:1910` in any order, then answers `movie:841` with `session.respond` and asserts `get_media_details` runs on 841 and the reply names David Lynch. Add a typed-reply case ("the Lynch one") that resolves to the same id.
+
+Rejected:
+
+- **A `defineState` candidates slot**, as MR 8 sketched. `get()` needs an active eve context, and whether a replayed workflow body has one is unverified. A slot can also go stale when the model passes an id from an earlier search. Fetching details again costs at most three Seerr reads.
+- **Labels supplied by the model** in the tool input. Reintroduces model-written text, which is the problem being fixed.
+- **Keeping `ask_question`** until MR 8. Least work now, but MR 5's instructions and evals would be rewritten later.
+
+Spike inside this MR: how `eve dev` and Telegram render a `ctx.ask` select with three options, and whether a typed number ("2") resolves to the second option as it does for `ask_question`.
+
+Verify: `pnpm test`, `pnpm eval media`, and one disambiguation in `eve dev`.
+
 ### MR 5: Request tool with confirmation and tagging
 
 Read first: `tools/human-in-the-loop.md` (the `approval` section), `guides/session-context.md`.
@@ -339,19 +369,13 @@ Verify: the smoke test checklist in the runbook, ticked off with the date. One w
 
 ### MR 8: Posters and summaries on disambiguation and confirmation
 
-Needs redesign before starting: since eve 0.65, `ask_question` options have no `id` (only `label` and `description`), so the handler below can no longer key candidates by TMDB id. Pick one of these when the MR starts:
-
-- **Match on the label.** Keep `ask_question` and look up each option's "Title (Year)" label in the candidates slot. No new tool, but it breaks when two candidates share a label (MR 4's labelling rule reduces this) and couples the handler to label wording.
-- **A `pick_media` tool of our own (preferred).** A workflow tool that takes `{ tmdbIds, mediaType }`, builds "Title (Year)" labels from the candidates slot, and calls `ctx.ask({ prompt, display: "select", options })` with each TMDB id as the option `id`. `ctx.ask()` returns the chosen `optionId` (eve 0.81.1, `ToolInputResponse` in `tools/definition.d.ts`), so the tool returns an exact TMDB id. eve still renders the buttons, accepts typed label or number replies, and withdraws the question when a new message arrives. The handler below keys on option ids as originally designed. Costs: one more tool and its schema, plus deciding whether `pick_media` replaces `ask_question` entirely (MR 4's decision may already have removed it).
-
-The approval half of this MR (a poster before the approve/cancel keyboard) is unaffected either way.
+Needs redesign before starting. MR 4a replaced `ask_question` with `pick_media`, whose option ids are `<mediaType>:<tmdbId>`, so the handler below can key on option ids. The candidates slot it describes doesn't exist: MR 4a fetches details instead. The handler needs `posterPath`, either from a slot written by the search tools or from a Seerr read of its own. Decide when the MR starts. The approval half (a poster before the approve/cancel keyboard) is unaffected.
 
 eve's default Telegram renderer shows a question as the prompt text plus one button per option label. Option `description` is not rendered, and nothing carries images. This MR replaces the `input.requested` handler so that choosing between titles, and confirming a request, shows each candidate's poster and a one-line summary.
 
 Read first: `channels/telegram.mdx` (event handler overrides), `concepts/state.md` (`defineState`), and the public exports in `node_modules/eve/dist/src/public/channels/telegram/index.d.ts` (`renderTelegramInputRequest`, `registerTelegramFreeformPrompt`).
 
 - `agent/lib/media/last-candidates.ts`: a `defineState` slot keyed by TMDB id holding `{ title, year, summary, posterPath }` for the candidates the last `search_media` or `get_media_recommendations` call returned. Both tools write it; nothing else reads it except the handler below.
-- Instructions: when calling `ask_question` to choose between titles, use the TMDB id as each option `id` and "Title (Year)" as the label.
 - `agent/lib/telegram/rich-input.ts`: an `input.requested` handler. For `kind: "question"` whose option ids all resolve in the candidates slot, send one `sendMediaGroup` (2 to 10 photos; a single candidate uses `sendPhoto`) with TMDB poster URLs (`https://image.tmdb.org/t/p/w342` plus `posterPath`) and captions numbered to match the buttons, then render the prompt and keyboard exactly as the default does via `renderTelegramInputRequest` and `registerTelegramFreeformPrompt`. For `kind: "tool-approval"` on `request_media`, send the single poster with the title and summary as caption before the approve/cancel keyboard. Anything else falls through to the default rendering.
 - Candidates without a `posterPath` get a text-only line in the caption group rather than breaking the whole group.
 - Telegram fetches the images itself from the TMDB URL, so nothing is proxied through the agent. Captions are capped at 1024 characters; summaries are already truncated to about 200.
