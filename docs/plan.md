@@ -1,6 +1,6 @@
 ---
 created_at: 2026-09-03T03:01:42Z
-updated_at: 2026-10-20T02:04:46Z
+updated_at: 2026-10-20T02:14:16Z
 status: draft
 ---
 
@@ -17,17 +17,17 @@ Work through this document one MR at a time. Each MR section lists the eve doc p
 | Topic | Decision | Why |
 | --- | --- | --- |
 | Hosting | Vercel via `eve deploy`. | eve's default path. Telegram needs a public webhook URL either way. |
-| Deployment | The GitHub repo is connected to Vercel, which deploys `main` to production on every push. Preview deployments are off, so PRs run only GitHub Actions. Any env var a change reads must exist on the Vercel project before that change merges. | One environment keeps the free tier simple. eve builds and boots without `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET_TOKEN`; the webhook route logs a warning and answers 401 until they are set (verified on eve 0.50.0, 2026-09-03, and again on 0.81.1, 2026-10-20), so merging channel code before the secrets exist fails closed rather than breaking the deploy. |
+| Deployment | The GitHub repo is connected to Vercel, which deploys `main` to production on every push. Vercel builds a protected preview deployment for each pull request, not for every branch push; Preview-scoped env vars currently hold the production values. Any env var a change reads must exist on the Vercel project before that change merges. | One environment keeps the free tier simple. eve builds and boots without `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET_TOKEN`; the webhook route logs a warning and answers 401 until they are set (verified on eve 0.50.0, 2026-09-03, and again on 0.81.1, 2026-10-20), so merging channel code before the secrets exist fails closed rather than breaking the deploy. |
 | Seerr endpoint | An existing Seerr 3.4.1 instance, published over https through a Cloudflare Tunnel that is independent of the agent. `SEERR_URL` points at it; the hostname lives only in `.env` and the Vercel project. | Already running. The agent only needs an API key. |
 | Seerr integration | Hand-authored typed tools over a thin `agent/lib/seerr` client. Not an OpenAPI connection. | The Seerr spec has ~200 operations. Exposing only four tools enforces "nothing unrelated" structurally, and the spec omits the `tags` field we need. |
 | Attribution | Every request carries two Radarr/Sonarr tags: a fixed `seerr` tag and the requester's display name from the allowlist, slugified to lowercase letters, digits and hyphens (`Mary Jane` becomes `mary-jane`). Bot uses one Seerr API key. No Seerr user mapping. | Confirmed 2026-09-03. The `seerr` tag marks everything that came through Seerr regardless of who asked. Slugifying assumes Radarr and Sonarr restrict tag labels to `[a-z0-9-]`; this was not verified. Two names with the same slug are rejected rather than suffixed, because a suffix would depend on who else is listed and could move a tag between people. |
 | Confirmation | Every `request_media` call is gated with eve's `approval: always()`. Ambiguous searches use the built-in `ask_question` tool so the user picks from a keyboard. | Confirmed 2026-09-03. `ask_question` was a default tool then and is opt-in since eve 0.65; it stays enabled, but MR 4 decides whether it earns its place over a numbered text list. |
 | Allowlist | JSON in the `MAJORDOMO_ALLOWED_USERS` env var, keyed by Telegram user id. Private chats only. Non-allowlisted messages and all group messages are dropped silently. | Adding a user is an env change, not a deploy. Silence avoids confirming the bot exists to strangers. |
 | Recommendations | Grounded in Seerr's TMDB-backed `/movie/{id}/recommendations`, `/similar` and TV equivalents, not model memory. | Titles come back with TMDB ids and library availability, so each suggestion is directly requestable and never hallucinated. |
-| Model | Keep `minimax/minimax-m3` through the AI Gateway as the starting point. Evals are the gate for switching. | See "Model choice" below. |
+| Model | `minimax/minimax-m3.1-flash` through the AI Gateway, switched from `minimax/minimax-m3` on 2026-10-20. Evals are the gate for switching. | Priced at $0 on the gateway; `minimax-m3` now costs $0.30 / $1.20 per million input/output tokens. See "Model choice" below. |
 | Gateway auth | Production authenticates to the AI Gateway with Vercel OIDC automatically. Local `eve dev` and `eve eval` use `AI_GATEWAY_API_KEY` from `.env`. | No switch needed; the two paths coexist. |
 | Seerr approval | All bot requests are auto-approved, because they arrive through one admin API key. Seerr's per-user quotas and approval rules do not apply. | Confirmed 2026-09-03. Per-user rules, if ever wanted, would live in the bot. |
-| Bots | A separate development bot for `eve dev` and testing. The production bot keeps serving the previous implementation until go-live, when its token moves to Vercel. | Telegram allows one webhook or one poller per token, not both. |
+| Bots | A separate development bot for `eve dev` and testing. The production bot keeps serving the previous implementation until go-live, when its token moves to Vercel. Wanted, not scheduled: a test bot to verify changes before they reach production, likely by giving the Preview environment its own `TELEGRAM_BOT_TOKEN` and webhook secret and pointing the test bot's webhook at a PR's preview deployment. | Telegram allows one webhook or one poller per token, not both. |
 | Runtime | Node 24, the newest version Vercel's functions runtime supports. `engines.node`, `mise.toml`, and `@types/node` all say 24. | Verified 2026-09-03 against Vercel's supported-versions docs and `@vercel/build-utils`, which reject unknown versions at build time rather than falling back. Node 26 is only available in Vercel Sandboxes. |
 | Telegram formatting | Deliver replies with `parse_mode: HTML` and fall back to plain text if Telegram rejects the message. The model may use `<b>` for titles and nothing else. | eve's default handler sends plain text, but its `sendMessage` body is spread through, so a custom `message.completed` handler can add `parse_mode`. HTML needs only `<`, `>`, `&` escaped; MarkdownV2 needs a dozen characters escaped and the model will get it wrong. Implemented in MR 2. eve's `sendMessage` wrapper throws a plain `Error` with the HTTP status in its message, so the 400 fallback matches on that text. |
 | Cost bounds | Session lifetime and token budgets in `agent.ts` `limits`, small tool outputs, and a spend cap on the AI Gateway. | See "Cost controls" below. |
@@ -167,7 +167,7 @@ A Telegram private chat maps to one eve session, and every model call re-sends t
 
 ```ts
 export default defineAgent({
-  model: "minimax/minimax-m3",
+  model: "minimax/minimax-m3.1-flash",
   limits: {
     sessionTimeoutMs: 24 * 60 * 60 * 1_000,   // fresh session each day; default is 30 days
     maxInputTokensPerSession: 250_000,         // default is 40 million
@@ -186,9 +186,13 @@ The starting values above are guesses to tune. MR 6 records the first week's gat
 
 ## Model choice
 
-`minimax/minimax-m3` stays as the default because it is cheap and on the gateway free tier. The risk for this agent is tool-call reliability rather than prose quality: it must chain `search_media`, `ask_question`, and `request_media` correctly, and stop when a request is unrelated. The eval suite in MR 5 is the acceptance test for whichever model is configured.
+`minimax/minimax-m3.1-flash` is the default because the gateway prices it at $0 (checked against `https://ai-gateway.vercel.sh/v1/models` on 2026-10-20). The risk for this agent is tool-call reliability rather than prose quality: it must chain `search_media`, `ask_question`, and `request_media` correctly, and stop when a request is unrelated. The eval suite in MR 5 is the acceptance test for whichever model is configured.
 
-Switching is a one-line change in `agent/agent.ts`. If minimax-m3 fails the evals, candidates to run the same suite against are Anthropic's Haiku 4.5, Google's Gemini Flash class, and OpenAI's mini class. I have not verified current gateway pricing or free-tier availability for any of these, so check the gateway model list before choosing. Do not add `reasoning` config until an eval shows it is needed.
+Unlike `minimax-m3`, it always reasons, with effort `low` to `max`. eve leaves `reasoning` unset, so the provider default applies. Reasoning tokens are likely to count as output tokens, which would make the 25,000-token `maxOutputTokensPerSession` budget bind sooner; MR 6's first-week usage review checks this. If it binds, set `reasoning: "low"` in `agent.ts` rather than raising the budget, and confirm with the evals.
+
+$0 models carry two costs the price doesn't show. The gateway rate limits free-tier requests per model and publishes no numbers; a `429` is retried twice by the AI SDK, then the turn fails. And none of them offer zero data retention or a no-training guarantee (`zdr` and `no_training` are `none`), so the provider may keep the household's messages: names and what they watch.
+
+Switching is a one-line change in `agent/agent.ts`. If minimax-m3.1-flash fails the evals, the other $0 language models on 2026-10-20 were `nvidia/nemotron-3.5-lightning-free`, `reflection/beam-free`, `poolside/laguna-s-2.1-free` and `stealth/glyph-cluster`; paid fallbacks include `minimax/minimax-m3`. Re-check the model list before choosing, because free pricing changes.
 
 ## MR stack
 
