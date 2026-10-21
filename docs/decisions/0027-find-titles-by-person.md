@@ -1,10 +1,10 @@
 ---
 created_at: 2026-10-21T06:51:25Z
-updated_at: 2026-10-21T06:51:25Z
+updated_at: 2026-10-21T11:35:50Z
 status: accepted
 ---
 
-# 0024. Find titles by person with `search_media_by_person`
+# 0027. Find titles by person with `search_media_by_person`
 
 Decided 2026-10-21, for #16.
 
