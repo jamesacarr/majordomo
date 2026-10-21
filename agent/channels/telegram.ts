@@ -1,5 +1,6 @@
 import { telegramChannel } from 'eve/channels/telegram';
 
+import { createOnInputRequested } from '../lib/telegram/create-on-input-requested';
 import { createOnMessage } from '../lib/telegram/create-on-message';
 import { onMessageCompleted } from '../lib/telegram/on-message-completed';
 
@@ -7,6 +8,9 @@ import { onMessageCompleted } from '../lib/telegram/on-message-completed';
 // Credentials come from TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET_TOKEN.
 // No botUsername: it only drives group mention detection, and groups are dropped.
 export default telegramChannel({
-  events: { 'message.completed': onMessageCompleted },
+  events: {
+    'input.requested': createOnInputRequested(),
+    'message.completed': onMessageCompleted,
+  },
   onMessage: createOnMessage(),
 });
