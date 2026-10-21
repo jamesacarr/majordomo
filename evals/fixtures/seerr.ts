@@ -71,6 +71,44 @@ const duneMiniseries = {
   voteCount: 300,
 };
 
+// The Mad Max films, for sequel shorthand: the fourth film's title has no
+// number, so "Mad Max 4" matches it only by knowing the series.
+const madMax = movie(
+  9_659,
+  'Mad Max',
+  '1979-04-12',
+  'In a dystopian future Australia, a police officer hunts the biker gang that killed his family.',
+);
+
+const madMaxTwo = movie(
+  8_810,
+  'Mad Max 2',
+  '1981-12-24',
+  'Max helps a community of settlers defend their fuel refinery from a gang of marauders.',
+);
+
+const thunderdome = movie(
+  9_355,
+  'Mad Max Beyond Thunderdome',
+  '1985-08-06',
+  'Exiled into the desert, Max finds a band of children waiting for a saviour.',
+);
+
+const furyRoad = movie(
+  76_341,
+  'Mad Max: Fury Road',
+  '2015-05-14',
+  'Max teams up with Imperator Furiosa to flee a tyrant across the wasteland.',
+  { voteAverage: 7.6 },
+);
+
+const furiosa = movie(
+  786_892,
+  'Furiosa: A Mad Max Saga',
+  '2024-05-23',
+  'Young Furiosa is taken from the Green Place and fights to find her way home.',
+);
+
 /** Search results by a word the query must contain, lower case. */
 export const SEARCH_RESULTS: Readonly<Record<string, readonly unknown[]>> = {
   dune: [
@@ -86,6 +124,7 @@ export const SEARCH_RESULTS: Readonly<Record<string, readonly unknown[]>> = {
     },
   ],
   'fight club': [fightClub],
+  'mad max': [madMax, furyRoad, madMaxTwo, furiosa, thunderdome],
 };
 
 /** `/movie/{id}` and `/tv/{id}` answers, by path. */
@@ -118,6 +157,39 @@ export const DETAILS: Readonly<Record<string, unknown>> = {
     },
     genres: [{ id: 878, name: 'Science Fiction' }],
     runtime: 137,
+  },
+  '/movie/76341': {
+    ...furyRoad,
+    credits: {
+      cast: [
+        {
+          character: 'Max Rockatansky',
+          id: 2_524,
+          name: 'Tom Hardy',
+          order: 0,
+        },
+        {
+          character: 'Imperator Furiosa',
+          id: 6_885,
+          name: 'Charlize Theron',
+          order: 1,
+        },
+      ],
+      crew: [
+        {
+          department: 'Directing',
+          id: 20_629,
+          job: 'Director',
+          name: 'George Miller',
+        },
+      ],
+    },
+    genres: [
+      { id: 28, name: 'Action' },
+      { id: 12, name: 'Adventure' },
+      { id: 878, name: 'Science Fiction' },
+    ],
+    runtime: 121,
   },
   '/movie/438631': {
     ...dune2021,
@@ -156,6 +228,55 @@ export const DETAILS: Readonly<Record<string, unknown>> = {
       { id: 12, name: 'Adventure' },
     ],
     runtime: 155,
+  },
+  '/movie/693134': {
+    ...duneTwo,
+    credits: {
+      cast: [
+        {
+          character: 'Paul Atreides',
+          id: 1_190_668,
+          name: 'Timothée Chalamet',
+          order: 0,
+        },
+        { character: 'Chani', id: 505_710, name: 'Zendaya', order: 1 },
+      ],
+      crew: [
+        {
+          department: 'Directing',
+          id: 137_427,
+          job: 'Director',
+          name: 'Denis Villeneuve',
+        },
+      ],
+    },
+    genres: [
+      { id: 878, name: 'Science Fiction' },
+      { id: 12, name: 'Adventure' },
+    ],
+    runtime: 167,
+  },
+  '/tv/1910': {
+    ...duneMiniseries,
+    createdBy: [{ id: 1_911, name: 'John Harrison' }],
+    credits: {
+      cast: [
+        {
+          character: 'Paul Atreides',
+          id: 7_060,
+          name: 'Alec Newman',
+          order: 0,
+        },
+        {
+          character: 'Duke Leto Atreides',
+          id: 1_925,
+          name: 'William Hurt',
+          order: 1,
+        },
+      ],
+    },
+    genres: [{ id: 10_765, name: 'Sci-Fi & Fantasy' }],
+    numberOfSeasons: 1,
   },
 };
 

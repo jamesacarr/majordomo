@@ -23,3 +23,45 @@ export type MediaDetails = Omit<MediaCandidate, 'mediaType'> & {
         readonly seasonCount: number | null;
       }
   );
+
+/** A candidate with its `pick_media` label, from `labelCandidates`. */
+export interface LabelledCandidate {
+  readonly item: MediaDetails;
+  readonly label: string;
+}
+
+/** One button `pick_media` shows: its id names the title, its label comes from Seerr data only. */
+export interface PickOption {
+  /** `movie:841` or `tv:1910`, from `toOptionId`. */
+  readonly id: string;
+  readonly label: string;
+}
+
+/**
+ * eve's answer to a `pick_media` question, as `toPickResult` reads it. A
+ * structural copy of `ToolInputResponse` from `eve/tools`, so `agent/lib`
+ * doesn't depend on eve.
+ */
+export type PickAnswer =
+  | {
+      readonly optionId?: string;
+      readonly status: 'answered';
+      readonly text?: string;
+    }
+  | { readonly status: 'cancelled' }
+  | { readonly status: 'unavailable' };
+
+/** What `pick_media` hands the model. */
+export type PickResult =
+  | {
+      readonly mediaType: MediaType;
+      readonly status: 'chosen';
+      readonly title: string;
+      readonly tmdbId: number;
+      readonly year: number | null;
+    }
+  | {
+      /** The labels the person saw, in button order. */
+      readonly options: readonly (MediaRef & { readonly label: string })[];
+      readonly status: 'cancelled';
+    };
