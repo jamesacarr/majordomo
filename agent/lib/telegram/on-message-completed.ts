@@ -1,15 +1,10 @@
-import type {
-  TelegramChannelEvents,
-  TelegramMessageBody,
-} from 'eve/channels/telegram';
+import type { TelegramChannelEvents } from 'eve/channels/telegram';
 import { TELEGRAM_MESSAGE_TEXT_MAX_LENGTH } from 'eve/channels/telegram';
 
 import { isBadRequest } from './is-bad-request';
 import { renderHtml } from './render-html';
 import { stripHtml } from './strip-html';
-
-/** `TelegramMessageBody` omits `parse_mode`, but eve spreads the body straight into `sendMessage`. */
-type HtmlMessageBody = TelegramMessageBody & { readonly parse_mode: 'HTML' };
+import type { HtmlMessageBody } from './types';
 
 /**
  * `message.completed` handler. Posts the reply as HTML so `<b>` titles render.
