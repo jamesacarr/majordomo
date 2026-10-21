@@ -29,6 +29,16 @@ export type MediaDetails = Omit<MediaCandidate, 'mediaType'> & {
       }
   );
 
+/** What a Telegram poster card shows for one title, from `posterCard`. */
+export interface PosterCard {
+  /** Seerr's overview, trimmed and truncated as candidates' are; may be empty. */
+  readonly overview: string;
+  /** `null` when TMDB has no poster for the title. */
+  readonly posterUrl: string | null;
+  readonly title: string;
+  readonly year: number | null;
+}
+
 /** A candidate with its `pick_media` label, from `labelCandidates`. */
 export interface LabelledCandidate {
   readonly item: MediaDetails;

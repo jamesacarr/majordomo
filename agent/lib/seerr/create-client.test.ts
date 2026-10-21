@@ -193,6 +193,7 @@ describe('createClient', () => {
       id: 603,
       mediaInfo: { status: 5, tmdbId: 603 },
       overview: 'A hacker learns what the Matrix is.',
+      posterPath: '/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg',
       releaseDate: '1999-03-31',
       title: 'The Matrix',
     });
