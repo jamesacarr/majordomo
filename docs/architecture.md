@@ -1,6 +1,6 @@
 ---
 created_at: 2026-10-21T01:34:23Z
-updated_at: 2026-10-21T07:04:10Z
+updated_at: 2026-10-21T09:18:11Z
 ---
 
 # Architecture
@@ -18,6 +18,8 @@ majordomo is a household agent built on eve and deployed to Vercel. Allowlisted 
 5. The model calls `request_media` with that id. eve pauses for approval, and Telegram shows the title's poster card, then approve and cancel buttons.
 6. On approval, `request_media` reads the requester's tag from the session, resolves the `seerr` and requester tag ids on the default Radarr or Sonarr server, and posts the request to Seerr with both.
 7. The reply reports the title, year and Seerr's status.
+
+`get_media_requests` reads past requests read-only; with `mine` it keeps the requester's by tag id, scanning Seerr's 100 newest (decision 0024).
 
 ## Scope restriction
 

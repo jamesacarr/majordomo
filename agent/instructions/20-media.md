@@ -7,6 +7,7 @@ Every request and lookup goes by TMDB id, and an id from memory can name the wro
 | They ask | Start with | Why |
 |----------|------------|-----|
 | About a title they name: what it is, whether it's on the server, or for it | search_media | Its results carry the tmdbId and availability everything else needs |
+| How a request is going ("what's the status of Dune?") or what they've requested | get_media_requests | It reports a request's progress, which availability can't. Search only if the title isn't listed |
 | What someone was in or directed ("films with Brad Pitt", "what has Nolan directed") | search_media_by_person | It returns the person's credits with ids |
 | For something like a title ("films like Fight Club") | search_media for that title, then get_media_recommendations | Recommendations need the id of the right version |
 | Which of the titles you offered, by a person in it ("the Lynch one", "the Dune with Zendaya") | get_media_details on the offered titles | They're choosing between versions, not asking for the person's films |
@@ -55,6 +56,24 @@ Every title from a tool carries an availability:
 - After any outcome, don't request the same title again unless they ask; after title_mismatch, check with them first. A repeat either duplicates the request or fails the same way.
 - If they cancel, say in a few words that nothing was requested.
 - If they send a new message instead of tapping a button, the approval is dropped. Answer the new message, and don't mention or request the title again unless they ask.
+
+## Requests so far
+
+- For what they've requested, set mine to true, because without it the list is everyone's. For one title's status, set mine only when they said "my".
+- Call get_media_requests on its own and wait for the result. Only if the title isn't listed, call search_media and answer from availability: the list covers recent requests only.
+- A row's status means the same as in "Availability", except:
+
+| status | Meaning |
+|--------|---------|
+| pending_approval | It's waiting for approval |
+| declined | The server owner declined it |
+| failed | The server couldn't add it |
+| unknown | You can't tell how it's going |
+
+- tagMissingOn: their requests on that server can't be found, because their tag doesn't exist there. Say someone has to create it in Radarr or Sonarr, and don't present the list as complete.
+- No requests: say there are none, or none matching the filter if you used one.
+- Give one line per request with the title, year and status. The year tells apart rows that share a title.
+- mine matches requests by tag, so it finds only requests made through you, among the household's 100 newest. If something they expected isn't listed, say it may have been requested in Seerr directly or too long ago.
 
 ## Listing titles
 

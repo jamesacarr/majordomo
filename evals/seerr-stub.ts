@@ -5,6 +5,7 @@ import {
   DETAILS,
   PERSON_CREDITS,
   RELATED,
+  REQUESTS,
   SEARCH_RESULTS,
 } from './fixtures/seerr';
 
@@ -66,6 +67,15 @@ const answer = (
     return PERSON_CREDITS[path];
   }
 
+  if (path === '/request') {
+    const take = Number.parseInt(query.get('take') ?? '', 10);
+
+    return {
+      pageInfo: { page: 1, pages: 1, results: REQUESTS.length },
+      results: REQUESTS.slice(0, Number.isNaN(take) ? REQUESTS.length : take),
+    };
+  }
+
   if (SERVER_DETAILS.has(path)) {
     return { tags };
   }
@@ -91,9 +101,11 @@ const readJson = async (request: IncomingMessage): Promise<unknown> => {
  *
  * `POST /request` records its body in `requests` and answers as Seerr 3.4.1
  * does for an auto-approved request: status 2 (approved) with the tags
- * echoed. Evals share one stub, so each request eval uses its own tmdbId and
- * filters `requests` by `mediaId`. `withTags` replaces both servers' tag set
- * while `fn` runs, one caller at a time, then restores the default.
+ * echoed. `GET /request` lists the fixed `REQUESTS`, honouring `take`; posted
+ * requests don't join it. Evals share one stub, so each request eval uses its
+ * own tmdbId and filters `requests` by `mediaId`. `withTags` replaces both
+ * servers' tag set while `fn` runs, one caller at a time, then restores the
+ * default.
  */
 export const startSeerrStub = async ({
   apiKey,
