@@ -44,6 +44,6 @@ The agent runs on Vercel and deploys from `main`. A first deploy follows these s
 4. [Set the Vercel environment variables](docs/runbook.md#vercel-environment-variables).
 5. [Set the AI Gateway spend cap](docs/runbook.md#ai-gateway-spend-cap).
 6. [Link and deploy](docs/runbook.md#link-and-deploy).
-7. [Go live](docs/runbook.md#go-live) and run the [smoke test](docs/runbook.md#smoke-test-checklist).
+7. [Go live](docs/runbook.md#go-live).
 
 The runbook also covers [adding a user](docs/runbook.md#adding-a-user) and [rotating credentials](docs/runbook.md#rotating-credentials).

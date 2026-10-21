@@ -1,6 +1,6 @@
 ---
 created_at: 2026-10-21T06:22:13Z
-updated_at: 2026-10-21T11:37:13Z
+updated_at: 2026-10-21T22:04:56Z
 ---
 
 # Runbook
@@ -11,13 +11,19 @@ Setup, go-live and recurring chores for majordomo. Work through the sections in 
 
 | Piece | Where it runs |
 |-------|---------------|
-| The agent | Vercel project `majordomo` in team `james-carrs-projects-e57e5dc3`, served at `https://majordomo.jamescarr.dev` |
+| The agent | A Vercel project, served at the project's production domain |
 | Telegram | Production bot with its webhook on the Vercel deployment, plus a separate development bot (0014) |
 | Seerr | Home server, reachable over https through a Cloudflare Tunnel managed outside this repo |
 | Seerr users | One per household member. The bot acts as each person's Seerr user, so their Seerr permissions, approval rules and quota apply ([0025](decisions/0025-act-as-each-persons-seerr-user.md)) |
 | Models | Vercel AI Gateway. Production authenticates with Vercel OIDC, development with `AI_GATEWAY_API_KEY` |
 
-`.vercel/` is gitignored, so a fresh checkout isn't linked to the project. Every `vercel` command below passes `--scope james-carrs-projects-e57e5dc3`, and every `eve link` or `eve deploy` passes `--project majordomo --team james-carrs-projects-e57e5dc3`.
+`.vercel/` is gitignored, so a fresh checkout isn't linked to the project. The commands below name the team and project explicitly, using three shell variables. Set them before running anything:
+
+```bash
+team=<vercel-team-slug>              # the Vercel team that owns the project
+project=majordomo                    # the Vercel project name
+base_url=https://<production-domain> # the project's production domain, no trailing slash
+```
 
 The design is in [architecture.md](architecture.md). The decisions this runbook relies on are [0001](decisions/0001-deploy-to-vercel-from-main.md) (deploys), [0025](decisions/0025-act-as-each-persons-seerr-user.md) (allowlist and Seerr users), [0014](decisions/0014-separate-development-bot.md) (development bot) and [0016](decisions/0016-bound-cost-per-session.md) (cost).
 
@@ -86,8 +92,8 @@ Two variables in `.env.example` stay out of Vercel. `MAJORDOMO_DEV_SEERR_USER_ID
 Add each variable as a secret and enter the value at the prompt, which keeps it out of shell history:
 
 ```bash
-vercel env add TELEGRAM_BOT_TOKEN production --sensitive --project majordomo --scope james-carrs-projects-e57e5dc3
-vercel env add TELEGRAM_BOT_TOKEN preview --sensitive --project majordomo --scope james-carrs-projects-e57e5dc3
+vercel env add TELEGRAM_BOT_TOKEN production --sensitive --project "$project" --scope "$team"
+vercel env add TELEGRAM_BOT_TOKEN preview --sensitive --project "$project" --scope "$team"
 ```
 
 Repeat for each variable. To change an existing value, add `--force`. Env var changes only apply to new deployments, so redeploy afterwards ([Redeploy](#redeploy)).
@@ -96,15 +102,15 @@ Any env var a change reads must exist on Vercel before that change merges (0001)
 
 ## AI Gateway spend cap
 
-The spend cap is an AI Gateway **team budget**: US$5 a month. It's the only hard financial limit (0016).
+The spend cap is an AI Gateway **team budget** with a monthly refresh. It's the only hard financial limit (0016). Pick a limit that covers expected household use with some headroom.
 
-A team budget counts every gateway request in the team, whether it comes from production (OIDC), the development `AI_GATEWAY_API_KEY`, or any other project in `james-carrs-projects-e57e5dc3`. Once spend reaches the limit, the gateway rejects every request from the team with HTTP 402 (`quota_for_entity_exceeded`) until the first of the next month (UTC). The check runs before each request, so the request that crosses the limit still completes.
+A team budget counts every gateway request in the team, whether it comes from production (OIDC), the development `AI_GATEWAY_API_KEY`, or any other project in the team. Once spend reaches the limit, the gateway rejects every request from the team with HTTP 402 (`quota_for_entity_exceeded`) until the first of the next month (UTC). The check runs before each request, so the request that crosses the limit still completes.
 
 Set it in the dashboard under **AI Gateway > Budgets > Team > Add budget**, or with the CLI:
 
 ```bash
-vercel ai-gateway budgets set team --limit 5 --refresh-period monthly --scope james-carrs-projects-e57e5dc3
-vercel ai-gateway budgets list --scope james-carrs-projects-e57e5dc3
+vercel ai-gateway budgets set team --limit <usd> --refresh-period monthly --scope "$team"
+vercel ai-gateway budgets list --scope "$team"
 ```
 
 In the dashboard, edit the budget and turn on the 50%, 75% and 100% email alerts. They go to team owners. Vercel's [budget documentation](https://vercel.com/docs/ai-gateway/observability-and-spend/budgets) covers the other scopes.
@@ -114,20 +120,20 @@ In the dashboard, edit the budget and turn on the 50%, 75% and 100% email alerts
 Link the checkout, which also pulls the project's env vars into `.env.local`:
 
 ```bash
-eve link --non-interactive --project majordomo --team james-carrs-projects-e57e5dc3
+eve link --non-interactive --project "$project" --team "$team"
 ```
 
 The first deploy goes from a clean, up-to-date `main`, because `eve deploy` uploads the local working tree:
 
 ```bash
 git switch main && git pull --ff-only && git status --short
-eve deploy --non-interactive --yes --project majordomo --team james-carrs-projects-e57e5dc3
+eve deploy --non-interactive --yes --project "$project" --team "$team"
 ```
 
 After that, Vercel deploys `main` on every push (0001). Check the deployment is serving:
 
 ```bash
-curl -fsS https://majordomo.jamescarr.dev/eve/v1/health
+curl -fsS "$base_url/eve/v1/health"
 ```
 
 The production domain must stay public. Telegram can't pass Vercel Authentication, so a protected production URL rejects every update.
@@ -137,8 +143,8 @@ The production domain must stay public. Telegram can't pass Vercel Authenticatio
 To apply changed env vars without shipping local code, rebuild the current production deployment:
 
 ```bash
-vercel ls majordomo --environment production --scope james-carrs-projects-e57e5dc3
-vercel redeploy <deployment-url> --target production --scope james-carrs-projects-e57e5dc3
+vercel ls "$project" --environment production --scope "$team"
+vercel redeploy <deployment-url> --target production --scope "$team"
 ```
 
 `<deployment-url>` is the newest **Ready** deployment in the list.
@@ -153,7 +159,7 @@ The production bot serves the previous implementation, which receives its update
 ```bash
 curl -fsS -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -H "Content-Type: application/json" \
-  -d '{"url":"https://majordomo.jamescarr.dev/eve/v1/telegram",
+  -d '{"url":"'"$base_url"'/eve/v1/telegram",
        "secret_token":"'"$TELEGRAM_WEBHOOK_SECRET_TOKEN"'",
        "allowed_updates":["message","callback_query"],
        "drop_pending_updates":true}'
@@ -169,8 +175,8 @@ curl -fsS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 
 Expect the new `url`, `allowed_updates` of `message` and `callback_query`, and no `last_error_message`. A 401 error there means the secret on Vercel and the one registered don't match.
 
-4. Shut down the previous implementation's service. Keep its configuration until the smoke test passes.
-5. Run the [smoke test](#smoke-test-checklist).
+4. Message the bot from an allowlisted account and confirm it answers.
+5. Shut down the previous implementation's service. Keep its configuration until you're confident the new bot works.
 
 To roll back, call `setWebhook` with the old service's URL and secret, then restart that service.
 
@@ -189,20 +195,3 @@ To roll back, call `setWebhook` with the old service's URL and secret, then rest
 **Webhook secret.** Generate a new one, update `TELEGRAM_WEBHOOK_SECRET_TOKEN` on Vercel and [redeploy](#redeploy). Then re-run `setWebhook` with the new secret. Updates that arrive between the two steps get a 401, and Telegram retries them.
 
 **Seerr API key.** Regenerate it in **Settings > General**, update `SEERR_API_KEY` on Vercel and [redeploy](#redeploy). Requests fail until the redeploy finishes.
-
-## Smoke-test checklist
-
-Run after go-live and after any change to the channel, allowlist or Seerr users. Untick every item before a new run.
-
-Last passed (UTC): not yet run
-
-- [ ] `curl -fsS https://majordomo.jamescarr.dev/eve/v1/health` succeeds
-- [ ] `getWebhookInfo` shows `https://majordomo.jamescarr.dev/eve/v1/telegram`, `allowed_updates` of `message` and `callback_query`, and no `last_error_message`
-- [ ] A Telegram account not on the allowlist messages the bot, and the bot sends nothing
-- [ ] A message in a group containing the bot, including one that mentions it, gets no reply. To add the bot, enable `/setjoingroups` in BotFather, then remove the bot from the group and set it back to **Disable**
-- [ ] An allowlisted user searches for a title with several matches. Each candidate arrives as a numbered card, with a poster where TMDB has one, before the keyboard
-- [ ] They pick one and tap **Approve** on the confirmation card. The request appears in Seerr with them as the requester, approved or pending according to their Seerr permissions
-- [ ] They ask "what have I requested?" and the list shows that request and none of anyone else's
-- [ ] An actor or director search ("films with Tilda Swinton") returns titles from that person's credits
-- [ ] `vercel ai-gateway budgets list --scope james-carrs-projects-e57e5dc3` shows the team budget at US$5 monthly
-- [ ] The previous implementation's service is stopped
