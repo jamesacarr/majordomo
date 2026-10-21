@@ -1,6 +1,6 @@
 ---
 created_at: 2026-10-21T05:07:40Z
-updated_at: 2026-10-21T05:07:40Z
+updated_at: 2026-10-21T05:59:26Z
 status: accepted
 ---
 
@@ -24,7 +24,8 @@ The preview is best effort:
 
 - A title whose fetch fails or times out gets a bare numbered label, and an approval gets no card.
 - A photo Telegram rejects, for example because TMDB has no image at that path, falls back to the text card.
-- When every fetch fails, the question renders as eve's default.
+- When every fetch fails, no cards are sent. A pick keeps its numbered buttons, so every pick looks the same.
+- When Telegram answers 429 (too many requests) to a card, the remaining cards are skipped, and the keyboard waits for the `retry_after` Telegram gives, at most 10 seconds. A 429 means the chat is already over the limit, so a keyboard posted at once would be throttled too. Telegram asks for about one message a second per chat and tolerates short bursts, and a pick sends up to five messages back to back. Telegram names the wait, so there is no exponential backoff; past the cap, the keyboard is posted anyway and fails as eve's default would.
 
 None of this is logged. `noConsole` is an error in `biome.json`, the repo has no logger, and eve's is internal. A text card where a photo should be is the signal.
 
@@ -41,6 +42,8 @@ Every other request renders exactly as eve's default. Overriding the handler rep
 ## Consequences
 
 A pick costs up to four extra Seerr reads, on top of `pick_media`'s own four, and an approval costs one.
+
+A pick takes up to five messages instead of two. Every pick leads to an approval (0006), so the chosen title's poster shows twice, and a pick-to-request flow takes up to seven messages. eve edits only the keyboard once a question is answered, so the cards stay in the chat as a record. Showing the poster once would need state shared between the two requests.
 
 The approval poster belongs to the `tmdbId` that will be requested, so a person can spot a wrong id before approving. That includes two titles with the same name and year, which 0022 can't tell apart. 0022 remains the check that stops a mismatched request.
 
