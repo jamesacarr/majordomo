@@ -1,6 +1,6 @@
 ---
 created_at: 2026-10-21T01:34:23Z
-updated_at: 2026-10-21T03:08:08Z
+updated_at: 2026-10-21T05:09:49Z
 status: accepted
 ---
 
@@ -37,7 +37,7 @@ The ticket's `replied` status, which carried free text back through the tool res
 
 Option ids are TMDB ids, so a custom Telegram renderer can key on them, for example to show posters.
 
-Telegram shows only the prompt and the labels, as inline buttons truncated to 64 characters. A description would never be seen, which is why options have none.
+eve's Telegram renderer shows only the prompt and the labels, as inline buttons truncated to 64 characters. A description would never be seen, which is why options have none. Our handler adds a poster card per title before the buttons (0023).
 
 An id the model resolves after `cancelled`, for example from "the Lynch one", is mapped by the model rather than picked by the person. `request_media` (#10) decides whether a request needs its own confirmation. Its approval prompt already shows the title.
 
