@@ -40,8 +40,7 @@ const shapeErrorFor = (body: unknown): ResponseShapeError => {
 /**
  * An in-memory Seerr holding one movie and one show, and a `POST /request`
  * that records each body. It answers as an auto-approving user (status 2)
- * unless `created` says otherwise. Typed without the `/service` methods, so
- * `request` can't call them. `calls` records every call in order.
+ * unless `created` says otherwise. `calls` records every call in order.
  */
 const fakeSeerr = ({
   created = () => Promise.resolve({ id: 41, status: 2 }),

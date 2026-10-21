@@ -1,8 +1,5 @@
 import type { Availability, RequestStatus } from './types';
 
-/** Radarr/Sonarr tag label applied to every request majordomo submits, beside the requester's own tag. */
-export const SEERR_TAG = 'seerr';
-
 /**
  * Seerr's `MediaStatus` codes in 3.4.1 (`server/constants/media.ts`). The
  * OpenAPI spec omits `BLOCKLISTED` and so numbers `DELETED` 6; the source has it at 7.

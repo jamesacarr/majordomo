@@ -33,8 +33,8 @@ const movieTitle = (tmdbId: number): string => `Movie ${tmdbId}`;
 /**
  * An in-memory Seerr holding one user's `requests` (newest first), answering
  * at most `take` of them, and a detail page for every id: `Movie <id>` (2001)
- * or `Show <id>` (2010) unless `failures` names the id. Typed without the
- * `/service` methods. Records every `listRequests` call.
+ * or `Show <id>` (2010) unless `failures` names the id. Records every
+ * `listRequests` call.
  */
 const fakeSeerr = ({
   failures = new Map<number, Error>(),

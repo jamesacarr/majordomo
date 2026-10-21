@@ -11,8 +11,6 @@ import {
   personSearchPageSchema,
   requestPageSchema,
   searchPageSchema,
-  serviceServerDetailsSchema,
-  serviceServersSchema,
   tvDetailsSchema,
   tvPageSchema,
 } from './schemas';
@@ -191,15 +189,9 @@ export const createClient = ({
     movieSimilar: id => call(`/movie/${id}/similar`, moviePageSchema),
     personCredits: id =>
       call(`/person/${id}/combined_credits`, combinedCreditsSchema),
-    radarrServer: id =>
-      call(`/service/radarr/${id}`, serviceServerDetailsSchema),
-    radarrServers: () => call('/service/radarr', serviceServersSchema),
     search: query => call('/search', searchPageSchema, { query: { query } }),
     searchPeople: query =>
       call('/search', personSearchPageSchema, { query: { query } }),
-    sonarrServer: id =>
-      call(`/service/sonarr/${id}`, serviceServerDetailsSchema),
-    sonarrServers: () => call('/service/sonarr', serviceServersSchema),
     tv: id => call(`/tv/${id}`, tvDetailsSchema),
     tvRecommendations: id => call(`/tv/${id}/recommendations`, tvPageSchema),
     tvSimilar: id => call(`/tv/${id}/similar`, tvPageSchema),
