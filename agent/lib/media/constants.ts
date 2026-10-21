@@ -12,6 +12,12 @@ export const MAX_CANDIDATES = 8;
 /** Recommendations with fewer TMDB votes than this rank below every one with more, so a 10.0 from three votes can't top the list. */
 export const MIN_VOTE_COUNT = 50;
 
+/** `search_media_by_person` drops TV acting and directing credits with fewer episodes than this, so a guest spot or one-off episode can't outrank films. */
+export const MIN_TV_EPISODES = 3;
+
+/** A cast `character` marking an appearance as themselves: talk shows, documentaries, award ceremonies. */
+export const SELF_APPEARANCE = /^(self|himself|herself|themselves)\b/iu;
+
 /** `get_media_details` lists this many top-billed cast members. */
 export const MAX_CAST = 5;
 

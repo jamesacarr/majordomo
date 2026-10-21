@@ -4,9 +4,11 @@ import { ApiError } from './api-error';
 import { REQUEST_TIMEOUT_MS } from './constants';
 import { ResponseShapeError } from './response-shape-error';
 import {
+  combinedCreditsSchema,
   createdRequestSchema,
   movieDetailsSchema,
   moviePageSchema,
+  personSearchPageSchema,
   requestPageSchema,
   searchPageSchema,
   serviceServerDetailsSchema,
@@ -151,10 +153,14 @@ export const createClient = ({
     movieRecommendations: id =>
       call(`/movie/${id}/recommendations`, moviePageSchema),
     movieSimilar: id => call(`/movie/${id}/similar`, moviePageSchema),
+    personCredits: id =>
+      call(`/person/${id}/combined_credits`, combinedCreditsSchema),
     radarrServer: id =>
       call(`/service/radarr/${id}`, serviceServerDetailsSchema),
     radarrServers: () => call('/service/radarr', serviceServersSchema),
     search: query => call('/search', searchPageSchema, { query: { query } }),
+    searchPeople: query =>
+      call('/search', personSearchPageSchema, { query: { query } }),
     sonarrServer: id =>
       call(`/service/sonarr/${id}`, serviceServerDetailsSchema),
     sonarrServers: () => call('/service/sonarr', serviceServersSchema),

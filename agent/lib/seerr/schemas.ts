@@ -75,6 +75,102 @@ export const searchPageSchema = pageOf(searchResultSchema).transform(page => ({
   results: page.results.filter(result => result !== null),
 }));
 
+/** A person as Seerr's `/search` maps one (`mapPersonResult`, 3.4.1). `knownFor` is not read. */
+export const personResultSchema = z.object({
+  id: z.number(),
+  mediaType: z.literal('person'),
+  name: z.string(),
+});
+
+/**
+ * Keeps only people from a `/search` result. Everything else, including a
+ * result with no `mediaType`, is relabelled before the union runs, so a
+ * malformed movie result can't fail a person search.
+ */
+const personSearchResultSchema = z.preprocess(
+  value =>
+    typeof value === 'object' &&
+    value !== null &&
+    'mediaType' in value &&
+    value.mediaType === 'person'
+      ? value
+      : { mediaType: 'other' },
+  z.discriminatedUnion('mediaType', [
+    personResultSchema,
+    z.object({ mediaType: z.literal('other') }).transform(() => null),
+  ]),
+);
+
+/** A `/search` page with everything but people dropped. */
+export const personSearchPageSchema = pageOf(
+  personSearchResultSchema,
+).transform(page => ({
+  ...page,
+  results: page.results.filter(result => result !== null),
+}));
+
+/**
+ * Relabels a combined-credits entry whose `mediaType` is missing or anything
+ * but `movie` or `tv`, so it becomes `null` and is dropped.
+ */
+const keepMovieOrTv = (value: unknown): unknown =>
+  typeof value === 'object' &&
+  value !== null &&
+  'mediaType' in value &&
+  (value.mediaType === 'movie' || value.mediaType === 'tv')
+    ? value
+    : { mediaType: 'other' };
+
+const otherCreditSchema = z
+  .object({ mediaType: z.literal('other') })
+  .transform(() => null);
+
+/** TMDB sends `episodeCount` for TV credits only, cast and crew alike. */
+const castFields = {
+  character: z.string().nullish(),
+  episodeCount: z.number().nullish(),
+};
+
+const crewFields = {
+  department: z.string().nullish(),
+  episodeCount: z.number().nullish(),
+  job: z.string().nullish(),
+};
+
+const castCreditSchema = z.preprocess(
+  keepMovieOrTv,
+  z.discriminatedUnion('mediaType', [
+    movieResultSchema.extend(castFields),
+    tvResultSchema.extend(castFields),
+    otherCreditSchema,
+  ]),
+);
+
+const crewCreditSchema = z.preprocess(
+  keepMovieOrTv,
+  z.discriminatedUnion('mediaType', [
+    movieResultSchema.extend(crewFields),
+    tvResultSchema.extend(crewFields),
+    otherCreditSchema,
+  ]),
+);
+
+/**
+ * `/person/{id}/combined_credits` (`server/models/Person.ts`, 3.4.1). Seerr
+ * already drops adult and `Thanks` credits. Each credit is a movie or TV
+ * result plus the role, so it maps with `toCandidate`. Missing lists become
+ * empty.
+ */
+export const combinedCreditsSchema = z
+  .object({
+    cast: z.array(castCreditSchema).nullish(),
+    crew: z.array(crewCreditSchema).nullish(),
+  })
+  .transform(({ cast, crew }) => ({
+    cast: (cast ?? []).filter(credit => credit !== null),
+    crew: (crew ?? []).filter(credit => credit !== null),
+  }));
+
 export const moviePageSchema = pageOf(movieResultSchema);
 
 export const tvPageSchema = pageOf(tvResultSchema);
