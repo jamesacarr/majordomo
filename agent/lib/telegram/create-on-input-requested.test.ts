@@ -5,9 +5,10 @@ import type {
 } from 'eve/channels/telegram';
 import { renderTelegramInputRequest } from 'eve/channels/telegram';
 import type { SessionContext } from 'eve/tools';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { MovieDetails } from '../seerr/types';
+import { MAX_THROTTLE_WAIT_MS, POSTER_FETCH_TIMEOUT_MS } from './constants';
 import { createOnInputRequested } from './create-on-input-requested';
 import type { InputRequest } from './types';
 
@@ -62,8 +63,24 @@ const approval = (tmdbId: number): InputRequest => ({
   requestId: 'approval-1',
 });
 
-/** A fake channel that records every Telegram call, in order. */
-const channelFor = () => {
+type ApiResponse = Awaited<ReturnType<TelegramHandle['request']>>;
+
+const OK: ApiResponse = { body: {}, ok: true, status: 200 };
+
+/** Telegram's answer to a bot sending too fast. */
+const throttled = (seconds: number): ApiResponse => ({
+  body: {
+    description: `Too Many Requests: retry after ${seconds}`,
+    error_code: 429,
+    ok: false,
+    parameters: { retry_after: seconds },
+  },
+  ok: false,
+  status: 429,
+});
+
+/** A fake channel that records every Telegram call, in order. `answer` decides each raw API response from its body. */
+const channelFor = (answer: (body: unknown) => ApiResponse = () => OK) => {
   const calls: { readonly body: unknown; readonly method: string }[] = [];
   let nextId = 100;
   const telegram = {
@@ -76,7 +93,7 @@ const channelFor = () => {
     }),
     request: vi.fn<TelegramHandle['request']>((method, body) => {
       calls.push({ body, method });
-      return Promise.resolve({ body: {}, ok: true, status: 200 });
+      return Promise.resolve(answer(body));
     }),
   };
   const state: TelegramHitlState = {};
@@ -88,8 +105,9 @@ const channelFor = () => {
 const run = async (
   requests: readonly InputRequest[],
   makeClient: () => ReturnType<typeof seerr> = seerr,
+  answer?: (body: unknown) => ApiResponse,
 ) => {
-  const fake = channelFor();
+  const fake = channelFor(answer);
 
   await createOnInputRequested(makeClient)(
     { requests, sequence: 1, stepIndex: 0, turnId: 'turn-1' },
@@ -106,6 +124,34 @@ const keyboardLabels = (body: unknown): string[] =>
   ).reply_markup.inline_keyboard
     .flat()
     .map(button => button.text);
+
+/** Answers 429 for the photo of `tmdbId`, and OK for everything else. */
+const throttlePhotoOf =
+  (tmdbId: number, seconds: number) =>
+  (body: unknown): ApiResponse =>
+    (body as { photo?: string }).photo === `${POSTER}/${tmdbId}.jpg`
+      ? throttled(seconds)
+      : OK;
+
+/** Starts the handler without awaiting it, so fake timers can step through its waits. */
+const start = (
+  requests: readonly InputRequest[],
+  makeClient: () => ReturnType<typeof seerr>,
+  answer?: (body: unknown) => ApiResponse,
+) => {
+  const fake = channelFor(answer);
+  const done = createOnInputRequested(makeClient)(
+    { requests, sequence: 1, stepIndex: 0, turnId: 'turn-1' },
+    fake.channel,
+    {} as SessionContext,
+  );
+
+  return { ...fake, done };
+};
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('createOnInputRequested', () => {
   it('sends a card per pick_media option in button order, then the numbered keyboard', async () => {
@@ -248,19 +294,84 @@ describe('createOnInputRequested', () => {
     });
   });
 
-  it('renders a freeform question as eve’s default ForceReply prompt', async () => {
-    const { options: _dropped, ...freeform } = {
-      ...pick([1, 2], 'free-1'),
-      action: { ...pick([1, 2]).action, toolName: 'other_tool' },
-    };
-    const { calls, state } = await run([freeform]);
+  it('renders a freeform pick_media question as eve’s default ForceReply prompt', async () => {
+    const { options: _dropped, ...freeform } = pick([1, 2], 'free-1');
+    const client = seerr();
+    const { calls, state } = await run([freeform], () => client);
+    const expected = renderTelegramInputRequest(freeform, {});
 
-    expect(calls[0]?.body).toMatchObject({
-      reply_markup: { force_reply: true },
-      text: 'Which one do you mean?',
-    });
+    expect(client.movie).not.toHaveBeenCalled();
+    expect(calls).toEqual([
+      {
+        body: { reply_markup: expected.replyMarkup, text: expected.text },
+        method: 'post',
+      },
+    ]);
     expect(state.pendingFreeformReplies).toEqual({ '101': 'free-1' });
     expect(state.hitlPrompts).toBeUndefined();
+  });
+
+  it('posts the keyboard once the poster deadline passes when Seerr never answers', async () => {
+    vi.useFakeTimers();
+    const stalled = () => ({
+      ...seerr(),
+      movie: vi.fn(() => new Promise<MovieDetails>(() => {})),
+    });
+    const { calls, done } = start([pick([1, 3])], stalled);
+
+    await vi.advanceTimersByTimeAsync(POSTER_FETCH_TIMEOUT_MS - 1);
+    expect(calls).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    await done;
+
+    expect(calls.map(call => call.method)).toEqual(['post']);
+  });
+
+  it('stops the cards at a throttled one and holds the keyboard for Telegram’s wait', async () => {
+    vi.useFakeTimers();
+    const { calls, done } = start(
+      [pick([1, 3, 4])],
+      seerr,
+      throttlePhotoOf(3, 4),
+    );
+
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(calls.map(call => call.method)).toEqual(['sendPhoto', 'sendPhoto']);
+    await vi.advanceTimersByTimeAsync(1);
+    await done;
+
+    expect(calls.map(call => call.method)).toEqual([
+      'sendPhoto',
+      'sendPhoto',
+      'post',
+    ]);
+    expect(keyboardLabels(calls[2]?.body)).toHaveLength(3);
+  });
+
+  it('caps the keyboard’s wait when Telegram asks for longer', async () => {
+    vi.useFakeTimers();
+    const { calls, done } = start(
+      [pick([1, 3])],
+      seerr,
+      throttlePhotoOf(1, 60),
+    );
+
+    await vi.advanceTimersByTimeAsync(MAX_THROTTLE_WAIT_MS);
+    await done;
+
+    expect(calls.map(call => call.method)).toEqual(['sendPhoto', 'post']);
+  });
+
+  it('holds an approval’s keyboard after its card is throttled', async () => {
+    vi.useFakeTimers();
+    const { calls, done } = start([approval(1)], seerr, throttlePhotoOf(1, 2));
+
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await done;
+
+    expect(calls.map(call => call.method)).toEqual(['sendPhoto', 'post']);
   });
 
   it('registers nothing when Telegram returns no message id', async () => {
