@@ -4,13 +4,17 @@ This project uses the eve framework: an agent is a directory of files under `age
 
 For a content-only change to the root agent's identity, purpose, tone, or response guidelines, edit its existing authored instructions. Fresh projects use `agent/instructions.md`; a project may instead use `agent/instructions.ts` or files under `agent/instructions/`. You do not need to read the framework docs for a content-only instructions change. A fresh project already has its selected model in `agent/agent.ts`; preserve that file unless the user asks to change the model.
 
+## Project design and decisions
+
+Read `docs/architecture.md` before changing the request flow or adding a capability. Check `docs/decisions/` before changing behaviour a decision covers. When a change makes or reverses a decision, add a numbered record there, or set the old one's `status` to `superseded`, in the same pull request.
+
 ## Read the docs before writing code
 
 ```sh
 ls node_modules/eve/docs
 ```
 
-Start with `docs/README.md`: it maps each task to the page that covers it. Read that page before authoring tools, connections, channels, skills, subagents, schedules, or deployment. In a workspace or local package install, resolve the installed `eve` package location first. If the package docs are missing, use https://eve.dev/docs.
+Start with `node_modules/eve/docs/README.md`: it maps each task to the page that covers it. Read that page before authoring tools, connections, channels, skills, subagents, schedules, or deployment. In a workspace or local package install, resolve the installed `eve` package location first. If the package docs are missing, use https://eve.dev/docs.
 
 Use a bounded authoring loop:
 

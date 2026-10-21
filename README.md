@@ -15,6 +15,8 @@ The development TUI opens an interactive session where you can send messages to 
 
 The agent is locked down by default: the built-in shell, file, and web tools are disabled in `agent/tools/`, and the only way it can act is through the typed tools this project authors. The default landing page at `/` is disabled in `agent/channels/home.ts`; only the health route and the authenticated session routes under `/eve/v1` are served. Logic and its colocated tests live in `agent/lib/`. Files in the directories eve discovers (`tools/`, `channels/`, `instructions/`, `skills/`, `schedules/`) only bind definitions to that code, because eve treats every file there as a definition and a `*.test.ts` alongside a tool fails the build.
 
+The design is in `docs/architecture.md`, and the reasoning behind each decision is in `docs/decisions/`.
+
 Checks:
 
 ```bash
