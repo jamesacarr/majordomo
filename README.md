@@ -34,12 +34,16 @@ To learn more about eve, explore these resources:
 - [Build an Agent tutorial](https://eve.dev/docs/tutorial/first-agent) — build and deploy an agent step by step.
 - [eve on GitHub](https://github.com/vercel/eve) — view the source and contribute.
 
-## Deploy on Vercel
+## Setup and deployment
 
-Deploy your agent to [Vercel](https://vercel.com) from the project root:
+The agent runs on Vercel and deploys from `main`. A first deploy follows these steps, each covered in [docs/runbook.md](docs/runbook.md):
 
-```bash
-eve deploy
-```
+1. [Create a development bot](docs/runbook.md#development-bot) for `pnpm dev`.
+2. [Generate the Seerr API key](docs/runbook.md#seerr).
+3. [Set up each person's Seerr user](docs/runbook.md#seerr-users).
+4. [Set the Vercel environment variables](docs/runbook.md#vercel-environment-variables).
+5. [Set the AI Gateway spend cap](docs/runbook.md#ai-gateway-spend-cap).
+6. [Link and deploy](docs/runbook.md#link-and-deploy).
+7. [Go live](docs/runbook.md#go-live) and run the [smoke test](docs/runbook.md#smoke-test-checklist).
 
-`eve deploy` links a Vercel project if needed and deploys the agent to production. See the [eve deployment documentation](https://eve.dev/docs/guides/deployment/vercel) for authentication, environment variables, and deployment options.
+The runbook also covers [adding a user](docs/runbook.md#adding-a-user) and [rotating credentials](docs/runbook.md#rotating-credentials).
