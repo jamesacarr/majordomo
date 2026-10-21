@@ -17,6 +17,7 @@ export default defineEval({
     });
 
     t.calledTool('pick_media', { output: { status: 'cancelled' } });
+    t.notCalledTool('search_media_by_person');
     // The follow-up turn, so a lookup made before asking doesn't count.
     next.calledTool('get_media_details', {
       input: { mediaType: 'movie', tmdbId: 841 },

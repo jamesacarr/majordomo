@@ -32,6 +32,27 @@ const tvResult = {
   voteAverage: 8.5,
   voteCount: 24_000,
 };
+const personResult = {
+  adult: false,
+  id: 287,
+  knownFor: [movieResult],
+  mediaType: 'person',
+  name: 'Brad Pitt',
+  popularity: 30.2,
+  profilePath: '/cckcYc2v0yh1tc9QjRelptcOBko.jpg',
+};
+const castCredit = {
+  ...movieResult,
+  character: 'Neo',
+  creditId: '52fe425bc3a36847f80181c1',
+  originalLanguage: 'en',
+};
+const crewCredit = {
+  ...tvResult,
+  creditId: '5256c8c219c2956ff604858a',
+  department: 'Directing',
+  job: 'Director',
+};
 const page = (results: readonly unknown[]) => ({
   page: 1,
   results,
@@ -62,6 +83,10 @@ const seerrAnswer = (url: string, method: string): unknown => {
 
   if (path === '/search') {
     return page([movieResult, tvResult]);
+  }
+
+  if (/^\/person\/\d+\/combined_credits$/u.test(path)) {
+    return { cast: [castCredit], crew: [crewCredit], id: 287 };
   }
 
   if (/^\/movie\/\d+\/(recommendations|similar)$/u.test(path)) {
@@ -168,6 +193,16 @@ describe('createClient', () => {
     ['sonarrServers', c => c.sonarrServers(), '/api/v1/service/sonarr'],
     ['sonarrServer', c => c.sonarrServer(2), '/api/v1/service/sonarr/2'],
     ['listRequests with no params', c => c.listRequests(), '/api/v1/request'],
+    [
+      'personCredits',
+      c => c.personCredits(287),
+      '/api/v1/person/287/combined_credits',
+    ],
+    [
+      'searchPeople',
+      c => c.searchPeople('Brad Pitt'),
+      '/api/v1/search?query=Brad%20Pitt',
+    ],
   ])('%s sends a GET to %s', async (_label, invoke, path) => {
     const { fetch, sent } = recordingFetch();
 
@@ -236,6 +271,132 @@ describe('createClient', () => {
       ['movie', 603],
       ['tv', 1399],
     ]);
+  });
+
+  it('searchPeople percent-encodes the query the same way search does', async () => {
+    const { fetch, sent } = recordingFetch();
+
+    await clientWith(fetch).searchPeople("Lupita Nyong'o (actor)! *&");
+
+    expect(sent[0]?.url).toBe(
+      'https://seerr.example.test/api/v1/search?query=Lupita%20Nyong%27o%20%28actor%29%21%20%2A%26',
+    );
+  });
+
+  it('searchPeople keeps only people, in order, even past a malformed movie result', async () => {
+    const fetch = answering(
+      page([
+        movieResult,
+        { id: 1, mediaType: 'person', name: 'Brad Pitt' },
+        { ...movieResult, title: undefined },
+        { id: 2344, mediaType: 'collection', title: 'The Matrix Collection' },
+        tvResult,
+        { id: 2, mediaType: 'person', name: 'Brad Pitt Jr' },
+      ]),
+    );
+
+    const { results } = await clientWith(fetch).searchPeople('brad pitt');
+
+    expect(results).toEqual([
+      { id: 1, mediaType: 'person', name: 'Brad Pitt' },
+      { id: 2, mediaType: 'person', name: 'Brad Pitt Jr' },
+    ]);
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['empty', []],
+    ['holding a malformed entry', [{ id: 9, mediaType: 'movie' }]],
+  ])(
+    'searchPeople accepts a person with knownFor %s and strips it',
+    async (_label, knownFor) => {
+      const fetch = answering(page([{ ...personResult, knownFor }]));
+
+      await expect(
+        clientWith(fetch).searchPeople('brad pitt'),
+      ).resolves.toMatchObject({
+        results: [{ id: 287, mediaType: 'person', name: 'Brad Pitt' }],
+      });
+    },
+  );
+
+  it('searchPeople drops a result with no mediaType', async () => {
+    const fetch = answering(page([{ id: 1, name: 'Nobody' }, personResult]));
+
+    const { results } = await clientWith(fetch).searchPeople('brad pitt');
+
+    expect(results.map(r => r.id)).toEqual([287]);
+  });
+
+  it('personCredits returns cast with character and crew with job and department, other keys stripped', async () => {
+    const { fetch } = recordingFetch();
+
+    await expect(clientWith(fetch).personCredits(287)).resolves.toEqual({
+      cast: [
+        {
+          character: 'Neo',
+          id: 603,
+          mediaInfo: { status: 5, tmdbId: 603 },
+          mediaType: 'movie',
+          overview: 'A hacker learns what the Matrix is.',
+          posterPath: '/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg',
+          releaseDate: '1999-03-31',
+          title: 'The Matrix',
+          voteAverage: 8.2,
+          voteCount: 25_000,
+        },
+      ],
+      crew: [
+        {
+          department: 'Directing',
+          firstAirDate: '2011-04-17',
+          id: 1399,
+          job: 'Director',
+          mediaType: 'tv',
+          name: 'Game of Thrones',
+          overview: 'Nine noble families fight for control.',
+          posterPath: null,
+          voteAverage: 8.5,
+          voteCount: 24_000,
+        },
+      ],
+    });
+  });
+
+  it('personCredits keeps the episode count of TV cast and crew credits', async () => {
+    const fetch = answering({
+      cast: [{ ...tvResult, character: 'Will Colbert', episodeCount: 1 }],
+      crew: [{ ...crewCredit, episodeCount: 2 }],
+    });
+
+    await expect(clientWith(fetch).personCredits(287)).resolves.toMatchObject({
+      cast: [{ character: 'Will Colbert', episodeCount: 1, id: 1399 }],
+      crew: [{ episodeCount: 2, id: 1399, job: 'Director' }],
+    });
+  });
+
+  it('personCredits drops credits with a missing or unknown mediaType', async () => {
+    const fetch = answering({
+      cast: [{ ...castCredit, mediaType: undefined }, castCredit],
+      crew: [{ ...crewCredit, mediaType: 'person' }, crewCredit],
+    });
+
+    const credits = await clientWith(fetch).personCredits(287);
+
+    expect(credits.cast.map(c => c.id)).toEqual([603]);
+    expect(credits.crew.map(c => c.id)).toEqual([1399]);
+  });
+
+  it('personCredits accepts null or missing optional fields and lists', async () => {
+    const fetch = answering({
+      cast: [{ character: null, id: 1, mediaType: 'movie', title: 'Untitled' }],
+      crew: null,
+    });
+
+    await expect(clientWith(fetch).personCredits(287)).resolves.toEqual({
+      cast: [{ character: null, id: 1, mediaType: 'movie', title: 'Untitled' }],
+      crew: [],
+    });
   });
 
   it('accepts results with null, empty or missing optional fields', async () => {

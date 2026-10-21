@@ -1,7 +1,12 @@
 import type { IncomingMessage } from 'node:http';
 import { createServer } from 'node:http';
 
-import { DETAILS, RELATED, SEARCH_RESULTS } from './fixtures/seerr';
+import {
+  DETAILS,
+  PERSON_CREDITS,
+  RELATED,
+  SEARCH_RESULTS,
+} from './fixtures/seerr';
 
 /** A Radarr or Sonarr tag as Seerr returns it under `/service/{radarr,sonarr}/{id}`. */
 export interface StubTag {
@@ -55,6 +60,10 @@ const answer = (
 
   if (/^\/(movie|tv)\/\d+\/(recommendations|similar)$/u.test(path)) {
     return page(RELATED[path] ?? []);
+  }
+
+  if (/^\/person\/\d+\/combined_credits$/u.test(path)) {
+    return PERSON_CREDITS[path];
   }
 
   if (SERVER_DETAILS.has(path)) {

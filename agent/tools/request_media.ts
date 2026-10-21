@@ -16,7 +16,7 @@ export default defineTool({
     request: always(),
   },
   description:
-    'Request one movie or TV show on the media server, tagged for the person asking. Use it only after they asked for that title. Takes the tmdbId and mediaType from search_media, get_media_recommendations or pick_media, and the title and year exactly as that result gave them. The person approves or cancels with buttons, so do not ask for confirmation first. For TV, pass seasons only when they named some. Returns an `outcome` to report.',
+    'Request one movie or TV show on the media server, tagged for the person asking. Use it only after they asked for that title. Takes the tmdbId and mediaType from search_media, get_media_recommendations, search_media_by_person or pick_media, and the title and year exactly as that result gave them. The person approves or cancels with buttons, so do not ask for confirmation first. For TV, pass seasons only when they named some. Returns an `outcome` to report.',
   execute: (input, ctx) => request(getClient(), requireRequester(ctx), input),
   inputSchema: z.object({
     mediaType: z.enum(['movie', 'tv']),

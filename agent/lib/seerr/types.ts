@@ -1,12 +1,15 @@
 import type { z } from 'zod';
 
 import type {
+  combinedCreditsSchema,
   createdRequestSchema,
   mediaInfoSchema,
   mediaRequestSchema,
   movieDetailsSchema,
   moviePageSchema,
   movieResultSchema,
+  personResultSchema,
+  personSearchPageSchema,
   requestPageSchema,
   searchPageSchema,
   serviceServerDetailsSchema,
@@ -46,6 +49,11 @@ export type MediaInfo = z.output<typeof mediaInfoSchema>;
 export type MovieResult = z.output<typeof movieResultSchema>;
 export type TvResult = z.output<typeof tvResultSchema>;
 export type SearchPage = z.output<typeof searchPageSchema>;
+export type PersonResult = z.output<typeof personResultSchema>;
+export type PersonSearchPage = z.output<typeof personSearchPageSchema>;
+export type CombinedCredits = z.output<typeof combinedCreditsSchema>;
+export type CastCredit = CombinedCredits['cast'][number];
+export type CrewCredit = CombinedCredits['crew'][number];
 export type MoviePage = z.output<typeof moviePageSchema>;
 export type TvPage = z.output<typeof tvPageSchema>;
 export type MovieDetails = z.output<typeof movieDetailsSchema>;
@@ -88,10 +96,14 @@ export interface Client {
   readonly movie: (id: number) => Promise<MovieDetails>;
   readonly movieRecommendations: (id: number) => Promise<MoviePage>;
   readonly movieSimilar: (id: number) => Promise<MoviePage>;
+  /** A person's movie and TV credits, cast and crew; credits of any other type are dropped. */
+  readonly personCredits: (id: number) => Promise<CombinedCredits>;
   readonly radarrServer: (id: number) => Promise<ServiceServerDetails>;
   readonly radarrServers: () => Promise<readonly ServiceServer[]>;
   /** Only movie and TV results; people, collections and anything else are dropped. */
   readonly search: (query: string) => Promise<SearchPage>;
+  /** The same `/search` as `search`, keeping only people, in Seerr's order. */
+  readonly searchPeople: (query: string) => Promise<PersonSearchPage>;
   readonly sonarrServer: (id: number) => Promise<ServiceServerDetails>;
   readonly sonarrServers: () => Promise<readonly ServiceServer[]>;
   readonly tv: (id: number) => Promise<TvDetails>;

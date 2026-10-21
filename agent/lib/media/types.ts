@@ -29,6 +29,18 @@ export type MediaDetails = Omit<MediaCandidate, 'mediaType'> & {
       }
   );
 
+/** Which of a person's credits `search_media_by_person` returns. Omitted means both. */
+export type PersonRole = 'acting' | 'directing';
+
+/** What `search_media_by_person` hands the model. `name` is Seerr's, so a wrong namesake shows. */
+export type PersonCredits =
+  | {
+      readonly credits: readonly MediaCandidate[];
+      readonly name: string;
+      readonly outcome: 'found';
+    }
+  | { readonly outcome: 'no_person' };
+
 /** What a Telegram poster card shows for one title, from `posterCard`. */
 export interface PosterCard {
   /** Seerr's overview, trimmed and truncated as candidates' are; may be empty. */

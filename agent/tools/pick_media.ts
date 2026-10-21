@@ -24,7 +24,7 @@ fetchDetails.maxRetries = 0;
 // Binding only; the labels and the answer mapping live under agent/lib/media/.
 export default defineWorkflowTool({
   description:
-    'Ask the person which of 2 to 4 movies or TV shows they mean. Shows each as a button labelled from the media server, so write no labels yourself. Takes TMDB ids from search_media or get_media_recommendations. Returns `chosen` with the exact title to carry on with, or `cancelled` when the person sent a new message instead or no one can answer: answer their latest message. A cancelled result lists the `options` they saw, in button order, so "the second one" or "the TV one" refers to those.',
+    'Ask the person which of 2 to 4 movies or TV shows they mean. Shows each as a button labelled from the media server, so write no labels yourself. Takes TMDB ids from search_media, get_media_recommendations or search_media_by_person. Returns `chosen` with the exact title to carry on with, or `cancelled` when the person sent a new message instead or no one can answer: answer their latest message. A cancelled result lists the `options` they saw, in button order, so "the second one" or "the TV one" refers to those.',
   async execute({ candidates }, ctx) {
     'use workflow';
 
