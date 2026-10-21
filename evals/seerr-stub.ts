@@ -15,7 +15,6 @@ export interface RecordedRequest {
   readonly mediaId?: unknown;
   readonly mediaType?: unknown;
   readonly seasons?: unknown;
-  readonly tags?: unknown;
 }
 
 /**
@@ -113,8 +112,7 @@ const readUserId = (request: IncomingMessage): number | null => {
  * and need no network. It checks callers as Seerr 3.5.0 does with the admin
  * key: without `X-Api-Key: apiKey` or an `X-API-User` header it answers 401,
  * and for an `X-API-User` other than users 2 and 3 it answers the auth
- * middleware's 403 `{ status, error }`. There's no `/service` route, so any
- * Radarr or Sonarr tag lookup 404s.
+ * middleware's 403 `{ status, error }`.
  *
  * `POST /request` records its body in `requests` and answers by user 2's
  * profile, `auto` unless `withProfile` sets another. `GET /request` lists the

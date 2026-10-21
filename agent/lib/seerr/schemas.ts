@@ -217,31 +217,9 @@ export const tvDetailsSchema = z.object({
   seasons: z.array(z.object({ seasonNumber: z.number() })).nullish(),
 });
 
-/** A Radarr or Sonarr server as Seerr lists it under `/service/radarr` or `/service/sonarr`. */
-export const serviceServerSchema = z.object({
-  id: z.number(),
-  is4k: z.boolean(),
-  isDefault: z.boolean(),
-  name: z.string().nullish(),
-});
-
-export const serviceServersSchema = z.array(serviceServerSchema);
-
-export const serviceTagSchema = z.object({
-  id: z.number(),
-  label: z.string(),
-});
-
-/** `/service/{radarr,sonarr}/{id}`. The spec omits `tags`, but Seerr 3.4.1 returns the server's tags here. */
-export const serviceServerDetailsSchema = z.object({
-  server: serviceServerSchema.nullish(),
-  tags: z.array(serviceTagSchema),
-});
-
 /**
  * A request as `GET /request` lists it. `status`: 1 pending approval,
- * 2 approved, 3 declined, 4 failed, 5 completed. Requests made outside
- * majordomo may carry no tags.
+ * 2 approved, 3 declined, 4 failed, 5 completed.
  */
 export const mediaRequestSchema = z.object({
   createdAt: z.string().nullish(),
@@ -250,7 +228,6 @@ export const mediaRequestSchema = z.object({
     .extend({ mediaType: z.enum(['movie', 'tv']).nullish() })
     .nullish(),
   status: z.number(),
-  tags: z.array(z.number()).nullish(),
   type: z.enum(['movie', 'tv']).nullish(),
 });
 

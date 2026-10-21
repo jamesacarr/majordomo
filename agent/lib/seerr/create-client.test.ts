@@ -60,15 +60,6 @@ const page = (results: readonly unknown[]) => ({
   totalPages: 1,
   totalResults: results.length,
 });
-const server = {
-  activeDirectory: '/movies',
-  activeProfileId: 1,
-  activeTags: [],
-  id: 0,
-  is4k: false,
-  isDefault: true,
-  name: 'Radarr',
-};
 const createdRequest = {
   createdAt: '2026-10-20T04:00:00.000Z',
   id: 41,
@@ -104,19 +95,6 @@ const seerrAnswer = (url: string, method: string): unknown => {
 
   if (/^\/tv\/\d+$/u.test(path)) {
     return { ...tvResult, seasons: [{ seasonNumber: 1 }] };
-  }
-
-  if (/^\/service\/(radarr|sonarr)$/u.test(path)) {
-    return [server];
-  }
-
-  if (/^\/service\/(radarr|sonarr)\/\d+$/u.test(path)) {
-    return {
-      profiles: [{ id: 1, name: 'HD-1080p' }],
-      rootFolders: [],
-      server,
-      tags: [{ id: 1, label: 'seerr' }],
-    };
   }
 
   return method === 'POST'
@@ -190,10 +168,6 @@ describe('createClient', () => {
       '/api/v1/tv/1399/recommendations',
     ],
     ['tvSimilar', c => c.tvSimilar(1399), '/api/v1/tv/1399/similar'],
-    ['radarrServers', c => c.radarrServers(), '/api/v1/service/radarr'],
-    ['radarrServer', c => c.radarrServer(0), '/api/v1/service/radarr/0'],
-    ['sonarrServers', c => c.sonarrServers(), '/api/v1/service/sonarr'],
-    ['sonarrServer', c => c.sonarrServer(2), '/api/v1/service/sonarr/2'],
     [
       'listRequests',
       c => c.listRequests({ requestedBy: 42 }),
@@ -437,19 +411,7 @@ describe('createClient', () => {
     });
   });
 
-  it('accepts listed requests with no tags, as requests made outside majordomo have', async () => {
-    const fetch = answering({
-      results: [{ ...createdRequest, tags: null }],
-    });
-
-    await expect(
-      clientWith(fetch).listRequests({ requestedBy: 42 }),
-    ).resolves.toMatchObject({
-      results: [{ id: 41, tags: null }],
-    });
-  });
-
-  it('createRequest accepts an answer that echoes no tags', async () => {
+  it('createRequest parses the request Seerr created', async () => {
     const fetch = answering(createdRequest);
 
     await expect(
@@ -502,19 +464,6 @@ describe('createClient', () => {
       'createdBy[0].name',
     ],
     ['TV details without a name', c => c.tv(1399), { id: 1399 }, 'name'],
-    [
-      'a server without isDefault',
-      c => c.radarrServers(),
-      [{ ...server, isDefault: undefined }],
-      '[0].isDefault',
-    ],
-    ['server details without tags', c => c.sonarrServer(0), { server }, 'tags'],
-    [
-      'a tag without a label',
-      c => c.radarrServer(0),
-      { server, tags: [{ id: 1 }] },
-      'tags[0].label',
-    ],
     [
       'a created request without a status',
       c => c.createRequest({ mediaId: 603, mediaType: 'movie' }),

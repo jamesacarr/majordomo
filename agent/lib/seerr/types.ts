@@ -11,9 +11,6 @@ import type {
   personSearchPageSchema,
   requestPageSchema,
   searchPageSchema,
-  serviceServerDetailsSchema,
-  serviceServerSchema,
-  serviceTagSchema,
   tvDetailsSchema,
   tvPageSchema,
   tvResultSchema,
@@ -57,9 +54,6 @@ export type MoviePage = z.output<typeof moviePageSchema>;
 export type TvPage = z.output<typeof tvPageSchema>;
 export type MovieDetails = z.output<typeof movieDetailsSchema>;
 export type TvDetails = z.output<typeof tvDetailsSchema>;
-export type ServiceServer = z.output<typeof serviceServerSchema>;
-export type ServiceTag = z.output<typeof serviceTagSchema>;
-export type ServiceServerDetails = z.output<typeof serviceServerDetailsSchema>;
 export type MediaRequest = z.output<typeof mediaRequestSchema>;
 export type RequestPage = z.output<typeof requestPageSchema>;
 
@@ -100,14 +94,10 @@ export interface Client {
   readonly movieSimilar: (id: number) => Promise<MoviePage>;
   /** A person's movie and TV credits, cast and crew; credits of any other type are dropped. */
   readonly personCredits: (id: number) => Promise<CombinedCredits>;
-  readonly radarrServer: (id: number) => Promise<ServiceServerDetails>;
-  readonly radarrServers: () => Promise<readonly ServiceServer[]>;
   /** Only movie and TV results; people, collections and anything else are dropped. */
   readonly search: (query: string) => Promise<SearchPage>;
   /** The same `/search` as `search`, keeping only people, in Seerr's order. */
   readonly searchPeople: (query: string) => Promise<PersonSearchPage>;
-  readonly sonarrServer: (id: number) => Promise<ServiceServerDetails>;
-  readonly sonarrServers: () => Promise<readonly ServiceServer[]>;
   readonly tv: (id: number) => Promise<TvDetails>;
   readonly tvRecommendations: (id: number) => Promise<TvPage>;
   readonly tvSimilar: (id: number) => Promise<TvPage>;

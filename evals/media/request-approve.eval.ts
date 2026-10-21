@@ -11,7 +11,7 @@ const ARRIVAL = 329_865;
 // pending or refused eval can't change the answer.
 export default defineEval<typeof config>({
   description:
-    'Approving a request for a title not on the server posts it once with no tags and reports the title, year and approved status.',
+    'Approving a request for a title not on the server posts only its media id and type, once, and reports the title, year and approved status.',
   async test(t) {
     const { seerr } = t.context;
 
