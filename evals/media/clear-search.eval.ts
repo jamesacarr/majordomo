@@ -9,7 +9,7 @@ export default defineEval({
 
     t.succeeded();
     t.calledTool('search_media', { input: { query: /fight club/iu } });
-    t.notCalledTool('ask_question');
+    t.notCalledTool('pick_media');
     t.check(turn.message, includes('<b>Fight Club</b>'));
   },
 });

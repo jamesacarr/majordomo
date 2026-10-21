@@ -12,3 +12,9 @@ export const MIN_VOTE_COUNT = 50;
 
 /** `get_media_details` lists this many top-billed cast members. */
 export const MAX_CAST = 5;
+
+/** `pick_media` shows at most this many titles. Telegram lays buttons out two per row, so four take the same two rows as three. */
+export const MAX_PICK_OPTIONS = 4;
+
+/** The question `pick_media` asks. Fixed, so the model writes no user-facing text. */
+export const PICK_PROMPT = 'Which one do you mean?';

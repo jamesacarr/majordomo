@@ -8,10 +8,11 @@
 
 ## Picking the right title
 
-- One clear match: the title matches and the year matches if they gave one, or only one result is plausible. Use it without asking.
-- Several plausible matches: call ask_question with the two or three likeliest. Label each option "Title (Year)", for example "Dune (2021)". If two options would get the same label, add the type: "Dune (2000, TV)". Never add "(Recommended)" or any other marker to a title option; the person picks.
-- Each option's description is one short line drawn from that result's overview. Don't name cast or crew there; search results don't include them.
-- Their answer is the chosen label or a typed reply. Match it back to the search result it came from, and carry on with that result's tmdbId and mediaType.
+- First work out which title they mean, including sequel numbers and informal names: "Dune 2" is Dune: Part Two, and "Fast 5" is Fast Five.
+- One clear match: only one result is a version of that title, and the year matches if they gave one. Use it without asking.
+- Several plausible matches: when more than one result is a version of that title, ask, even if one version is better known. Call pick_media with the tmdbId and mediaType of each, up to four. Versions include a remake or a TV adaptation, with both movies and TV unless they said which. Leave out other entries in the same series unless their words could point to them. It shows the person the choices itself, so don't list them in your reply.
+- chosen: carry on with its tmdbId and mediaType.
+- cancelled: the person sent a new message instead of tapping a button. Answer that message. If it refers to the choices, such as "the second one", "the TV one" or "the older one", resolve it against the options in the result: the labels they saw, in button order. If it names a person, such as an actor or director, call get_media_details on the candidates to find the one they mean.
 
 ## Questions about availability
 
