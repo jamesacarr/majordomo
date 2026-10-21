@@ -1,4 +1,9 @@
-import type { MediaCandidate, MediaType } from '../seerr/types';
+import type {
+  Availability,
+  MediaCandidate,
+  MediaType,
+  RequestStatus,
+} from '../seerr/types';
 
 /** Identifies one title, the way every media tool takes it. */
 export interface MediaRef {
@@ -65,3 +70,36 @@ export type PickResult =
       readonly options: readonly (MediaRef & { readonly label: string })[];
       readonly status: 'cancelled';
     };
+
+/** What `request_media` takes. `title` and `year` only build the approval prompt; Seerr's own title is what gets reported. */
+export interface RequestInput extends MediaRef {
+  /** TV only: the season numbers to request, or `'all'`. Omitted means all. */
+  readonly seasons?: readonly number[] | 'all' | undefined;
+  readonly title: string;
+  /** `null` when the search result had no release date; treated as unknown. */
+  readonly year?: number | null | undefined;
+}
+
+/** What `request_media` hands the model. Title and year always come from Seerr. */
+export type RequestResult = {
+  readonly title: string;
+  readonly year: number | null;
+} & (
+  | {
+      readonly outcome: 'requested';
+      readonly requestId: number;
+      readonly status: RequestStatus;
+      /** The tag ids Seerr echoed back on the request. */
+      readonly tags: readonly number[];
+    }
+  /** Seerr created the request but its answer didn't echo the tags, so they can't be confirmed. */
+  | { readonly outcome: 'requested_unconfirmed' }
+  | {
+      readonly availability: Availability;
+      readonly outcome: 'already_on_server';
+    }
+  /** Seerr's title or year for the id differs from the one the person approved. */
+  | { readonly outcome: 'title_mismatch' }
+  /** The tag labels with no Radarr or Sonarr tag; nothing was requested. */
+  | { readonly missing: readonly string[]; readonly outcome: 'missing_tags' }
+);

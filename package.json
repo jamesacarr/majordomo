@@ -16,7 +16,7 @@
     "build": "eve build",
     "deploy": "eve deploy",
     "dev": "eve dev",
-    "eval": "SEERR_URL=http://127.0.0.1:47231 SEERR_API_KEY=eval-api-key eve eval",
+    "eval": "SEERR_URL=http://127.0.0.1:47231 SEERR_API_KEY=eval-api-key MAJORDOMO_DEV_USER='Eval Tester' eve eval",
     "lint": "biome check --write .",
     "lint:ci": "biome check .",
     "prepare": "husky",

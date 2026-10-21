@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { ApiError } from './api-error';
 import { REQUEST_TIMEOUT_MS } from './constants';
+import { ResponseShapeError } from './response-shape-error';
 import {
   createdRequestSchema,
   movieDetailsSchema,
@@ -66,12 +67,13 @@ const readErrorMessage = async (response: Response): Promise<string> => {
  * Builds a client for the Seerr v1 API at `baseUrl` (the instance root, without
  * `/api/v1`), authenticated with the `X-Api-Key` header. Non-2xx responses
  * throw an `ApiError`. Every answer is parsed with its schema from
- * `schemas.ts`, and one that does not match throws naming the path and the
- * field, so a Seerr upgrade that renames a field fails at the call rather than
- * as an `undefined` further on. A call that takes longer than `timeoutMs`,
- * from sending the request to reading the whole body, is aborted and throws.
- * Seerr sits behind a tunnel that can stall, and a hung call would hold the
- * agent's turn. Pass `fetch` to substitute the transport in tests.
+ * `schemas.ts`, and one that does not match throws a `ResponseShapeError`
+ * naming the path and the field, so a Seerr upgrade that renames a field
+ * fails at the call rather than as an `undefined` further on. A call that
+ * takes longer than `timeoutMs`, from sending the request to reading the
+ * whole body, is aborted and throws. Seerr sits behind a tunnel that can
+ * stall, and a hung call would hold the agent's turn. Pass `fetch` to
+ * substitute the transport in tests.
  */
 export const createClient = ({
   apiKey,
@@ -123,9 +125,9 @@ export const createClient = ({
       const parsed = schema.safeParse(await response.json());
 
       if (!parsed.success) {
-        throw new Error(
+        throw new ResponseShapeError(
           `Seerr's answer to ${path} did not have the expected shape:\n${z.prettifyError(parsed.error)}`,
-          { cause: parsed.error },
+          parsed.error,
         );
       }
 
