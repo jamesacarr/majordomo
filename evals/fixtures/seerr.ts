@@ -212,6 +212,67 @@ const millionDollarBaby = movie(
 
 const directed = { department: 'Directing', job: 'Director' };
 
+const matrix = movie(
+  603,
+  'The Matrix',
+  '1999-03-30',
+  'A hacker learns that the world he lives in is a simulation and joins the rebellion against its makers.',
+  { status: 3, voteAverage: 8.2 },
+);
+
+const severance = {
+  firstAirDate: '2022-02-17',
+  id: 95_396,
+  mediaInfo: { status: 5, tmdbId: 95_396 },
+  mediaType: 'tv',
+  name: 'Severance',
+  overview:
+    'Office workers have their memories surgically divided between work and home.',
+  posterPath: '/95396.jpg',
+  voteAverage: 8.4,
+  voteCount: 2_000,
+};
+
+/**
+ * `GET /request` rows, newest first. Tag 2 is `eval-tester`, so Dune and
+ * Severance are the requester's. Fight Club carries another person's tag, and
+ * The Matrix was requested in Seerr's own UI, so it has no tags.
+ */
+export const REQUESTS: readonly unknown[] = [
+  {
+    createdAt: '2026-10-20T09:00:00.000Z',
+    id: 4,
+    media: { mediaType: 'movie', status: 3, tmdbId: 438_631 },
+    status: 2,
+    tags: [1, 2],
+    type: 'movie',
+  },
+  {
+    createdAt: '2026-10-12T09:00:00.000Z',
+    id: 3,
+    media: { mediaType: 'tv', status: 5, tmdbId: 95_396 },
+    status: 5,
+    tags: [1, 2],
+    type: 'tv',
+  },
+  {
+    createdAt: '2026-09-30T09:00:00.000Z',
+    id: 2,
+    media: { mediaType: 'movie', status: 5, tmdbId: 550 },
+    status: 5,
+    tags: [1, 3],
+    type: 'movie',
+  },
+  {
+    createdAt: '2026-09-01T09:00:00.000Z',
+    id: 1,
+    media: { mediaType: 'movie', status: 3, tmdbId: 603 },
+    status: 2,
+    tags: null,
+    type: 'movie',
+  },
+];
+
 /** Search results by a word the query must contain, lower case. */
 export const SEARCH_RESULTS: Readonly<Record<string, readonly unknown[]>> = {
   alien: [alien],
@@ -259,6 +320,7 @@ export const DETAILS: Readonly<Record<string, unknown>> = {
   '/movie/78': bladeRunner,
   '/movie/348': alien,
   '/movie/550': fightClub,
+  '/movie/603': matrix,
   '/movie/841': {
     ...dune1984,
     credits: {
@@ -411,6 +473,7 @@ export const DETAILS: Readonly<Record<string, unknown>> = {
     genres: [{ id: 10_765, name: 'Sci-Fi & Fantasy' }],
     numberOfSeasons: 1,
   },
+  '/tv/95396': severance,
 };
 
 /** Recommendations and similar titles for Fight Club. */

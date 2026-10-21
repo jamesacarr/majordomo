@@ -9,6 +9,12 @@ export const SEERR_API_KEY_ENV = 'SEERR_API_KEY';
 /** Search and recommendations return at most this many candidates. Tool output is re-sent on every later model call. */
 export const MAX_CANDIDATES = 8;
 
+/** `get_media_requests` returns at most this many requests, one per title. */
+export const MAX_REQUEST_ROWS = 20;
+
+/** `get_media_requests` reads this many of Seerr's newest requests before filtering by tag and title. */
+export const REQUEST_SCAN_SIZE = 100;
+
 /** Recommendations with fewer TMDB votes than this rank below every one with more, so a 10.0 from three votes can't top the list. */
 export const MIN_VOTE_COUNT = 50;
 

@@ -11,6 +11,7 @@ export default defineEval({
     t.calledTool('search_media', { input: { query: /fight club/iu } });
     t.notCalledTool('pick_media');
     t.notCalledTool('search_media_by_person');
+    t.notCalledTool('get_media_requests');
     t.check(turn.message, includes('<b>Fight Club</b>'));
   },
 });

@@ -125,3 +125,53 @@ export type RequestResult = {
   /** The tag labels with no Radarr or Sonarr tag; nothing was requested. */
   | { readonly missing: readonly string[]; readonly outcome: 'missing_tags' }
 );
+
+/**
+ * One request's progress, from `toRequestProgress`. An approved or completed
+ * request reports its media's availability, since bot requests auto-approve
+ * (decision 0010); otherwise the request's own state.
+ */
+export type RequestProgress =
+  | Extract<
+      Availability,
+      | 'processing'
+      | 'partially_available'
+      | 'available'
+      | 'blocklisted'
+      | 'deleted'
+    >
+  | 'pending_approval'
+  | 'declined'
+  | 'failed'
+  | 'unknown';
+
+/** What `get_media_requests` takes. */
+export interface ListRequestsInput {
+  /** Seerr's own request filter, passed through. Omitted lists every state. */
+  readonly filter?: 'available' | 'processing' | undefined;
+  /** Only the person asking's requests, matched by their Radarr or Sonarr tag. */
+  readonly mine?: boolean | undefined;
+}
+
+/** One title in `get_media_requests`' answer: the newest request for it. */
+export interface RequestRow {
+  readonly mediaType: MediaType;
+  /** `YYYY-MM-DD` from the request's `createdAt`; `null` when Seerr sent none. */
+  readonly requestedOn: string | null;
+  readonly status: RequestProgress;
+  /** `null` when the title couldn't be fetched. */
+  readonly title: string | null;
+  /** `null` when the title couldn't be fetched or has no release date. */
+  readonly year: number | null;
+}
+
+/** The *arr server that holds a media type's requests: Radarr for movies, Sonarr for TV. */
+export type RequestServer = 'Radarr' | 'Sonarr';
+
+/** What `get_media_requests` hands the model. */
+export interface ListRequestsResult {
+  /** Newest first, at most `MAX_REQUEST_ROWS`. */
+  readonly requests: readonly RequestRow[];
+  /** Only when `mine`: servers with no tag for the requester, so their requests there can't be found. Omitted when empty. */
+  readonly tagMissingOn?: readonly RequestServer[];
+}
