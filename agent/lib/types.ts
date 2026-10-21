@@ -3,8 +3,6 @@ export type Env = Readonly<Record<string, string | undefined>>;
 
 /** A household member permitted to talk to the bot, and the identity tools act for. */
 export interface AllowedUser {
-  /** Display name as written in the allowlist. */
-  readonly name: string;
-  /** Radarr/Sonarr tag label for this person: the slugified name (see `toTag`). */
-  readonly tag: string;
+  /** The Seerr user every Seerr call acts as, via the `X-API-User` header. */
+  readonly seerrUserId: number;
 }

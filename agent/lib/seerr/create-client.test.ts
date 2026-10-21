@@ -4,6 +4,7 @@ import { ApiError } from './api-error';
 import { createClient } from './create-client';
 import { ResponseShapeError } from './response-shape-error';
 import type { Client } from './types';
+import { UnknownUserError } from './unknown-user-error';
 
 // Answers shaped like Seerr 3.4.1's, including fields the schemas don't read.
 const movieResult = {
@@ -72,8 +73,8 @@ const createdRequest = {
   createdAt: '2026-10-20T04:00:00.000Z',
   id: 41,
   media: { id: 12, mediaType: 'movie', status: 2, tmdbId: 603 },
+  requestedBy: { displayName: 'Mary', id: 42 },
   status: 2,
-  tags: [1, 9],
   type: 'movie',
 };
 
@@ -169,6 +170,7 @@ const clientWith = (
     apiKey: 'secret-key',
     baseUrl,
     fetch,
+    seerrUserId: 42,
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
   });
 
@@ -192,7 +194,11 @@ describe('createClient', () => {
     ['radarrServer', c => c.radarrServer(0), '/api/v1/service/radarr/0'],
     ['sonarrServers', c => c.sonarrServers(), '/api/v1/service/sonarr'],
     ['sonarrServer', c => c.sonarrServer(2), '/api/v1/service/sonarr/2'],
-    ['listRequests with no params', c => c.listRequests(), '/api/v1/request'],
+    [
+      'listRequests',
+      c => c.listRequests({ requestedBy: 42 }),
+      '/api/v1/request?requestedBy=42',
+    ],
     [
       'personCredits',
       c => c.personCredits(287),
@@ -211,6 +217,7 @@ describe('createClient', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]?.method).toBe('GET');
     expect(sent[0]?.url).toBe(`https://seerr.example.test${path}`);
+    expect(sent[0]?.headers['X-API-User']).toBe('42');
   });
 
   it('authenticates every request with the X-Api-Key header', async () => {
@@ -219,6 +226,19 @@ describe('createClient', () => {
     await clientWith(fetch).movie(603);
 
     expect(sent[0]?.headers['X-Api-Key']).toBe('secret-key');
+  });
+
+  it('acts as the given Seerr user with the X-API-User header', async () => {
+    const { fetch, sent } = recordingFetch();
+
+    await createClient({
+      apiKey: 'secret-key',
+      baseUrl: 'https://seerr.example.test',
+      fetch,
+      seerrUserId: 7,
+    }).movie(603);
+
+    expect(sent[0]?.headers['X-API-User']).toBe('7');
   });
 
   it('returns the parsed answer with the fields the schema does not read stripped', async () => {
@@ -422,9 +442,19 @@ describe('createClient', () => {
       results: [{ ...createdRequest, tags: null }],
     });
 
-    await expect(clientWith(fetch).listRequests()).resolves.toMatchObject({
+    await expect(
+      clientWith(fetch).listRequests({ requestedBy: 42 }),
+    ).resolves.toMatchObject({
       results: [{ id: 41, tags: null }],
     });
+  });
+
+  it('createRequest accepts an answer that echoes no tags', async () => {
+    const fetch = answering(createdRequest);
+
+    await expect(
+      clientWith(fetch).createRequest({ mediaId: 603, mediaType: 'movie' }),
+    ).resolves.toMatchObject({ id: 41, status: 2 });
   });
 
   it.each<[string, (client: Client) => Promise<unknown>, unknown, string]>([
@@ -486,14 +516,14 @@ describe('createClient', () => {
       'tags[0].label',
     ],
     [
-      'a created request without its tags',
-      c => c.createRequest({ mediaId: 603, mediaType: 'movie', tags: [1] }),
-      { ...createdRequest, tags: null },
-      'tags',
+      'a created request without a status',
+      c => c.createRequest({ mediaId: 603, mediaType: 'movie' }),
+      { ...createdRequest, status: undefined },
+      'status',
     ],
     [
       'a listed request without a status',
-      c => c.listRequests(),
+      c => c.listRequests({ requestedBy: 42 }),
       { results: [{ ...createdRequest, status: undefined }] },
       'results[0].status',
     ],
@@ -514,13 +544,15 @@ describe('createClient', () => {
   );
 
   it('throws a ResponseShapeError carrying the zod issues for a shape mismatch', async () => {
-    const error = await clientWith(answering({ ...createdRequest, tags: null }))
-      .createRequest({ mediaId: 603, mediaType: 'movie', tags: [1] })
+    const error = await clientWith(
+      answering({ ...createdRequest, status: undefined }),
+    )
+      .createRequest({ mediaId: 603, mediaType: 'movie' })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ResponseShapeError);
     expect((error as ResponseShapeError).issues.map(i => i.path)).toEqual([
-      ['tags'],
+      ['status'],
     ]);
   });
 
@@ -529,29 +561,29 @@ describe('createClient', () => {
 
     await clientWith(fetch).listRequests({
       filter: 'pending',
+      requestedBy: 42,
       sort: 'added',
       take: 20,
     });
 
     expect(sent[0]?.url).toBe(
-      'https://seerr.example.test/api/v1/request?filter=pending&sort=added&take=20',
+      'https://seerr.example.test/api/v1/request?filter=pending&requestedBy=42&sort=added&take=20',
     );
   });
 
-  it('createRequest POSTs the body as JSON, tags included', async () => {
+  it('createRequest POSTs the body as JSON as the Seerr user', async () => {
     const { fetch, sent } = recordingFetch();
     const body = {
       mediaId: 1399,
       mediaType: 'tv' as const,
       seasons: [1, 2],
-      tags: [3, 7],
     };
 
     await clientWith(fetch).createRequest(body);
 
     expect(sent[0]).toMatchObject({
       body,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-API-User': '42' },
       method: 'POST',
       url: 'https://seerr.example.test/api/v1/request',
     });
@@ -566,15 +598,57 @@ describe('createClient', () => {
     );
 
     const error = await clientWith(fetch)
-      .createRequest({ mediaId: 603, mediaType: 'movie', tags: [] })
+      .createRequest({ mediaId: 603, mediaType: 'movie' })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({
       message:
         'Seerr answered HTTP 409: Request for this media already exists.',
+      seerrMessage: 'Request for this media already exists.',
       status: 409,
     });
+  });
+
+  it("throws an ApiError with Seerr's message when it refuses a request with 403", async () => {
+    const { fetch } = recordingFetch(() =>
+      Response.json(
+        { message: 'You do not have permission to make movie requests.' },
+        { status: 403 },
+      ),
+    );
+
+    const error = await clientWith(fetch)
+      .createRequest({ mediaId: 603, mediaType: 'movie' })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      seerrMessage: 'You do not have permission to make movie requests.',
+      status: 403,
+    });
+  });
+
+  it('throws an UnknownUserError naming the id when Seerr has no such user', async () => {
+    const { fetch } = recordingFetch(() =>
+      Response.json(
+        {
+          error: 'You do not have permission to access this endpoint',
+          status: 403,
+        },
+        { status: 403 },
+      ),
+    );
+
+    const error = await clientWith(fetch)
+      .movie(603)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(UnknownUserError);
+    expect(error).not.toBeInstanceOf(ApiError);
+    expect((error as Error).message).toContain('no user with id 42');
+    expect((error as Error).message).toContain('MAJORDOMO_ALLOWED_USERS');
+    expect((error as Error).message).toContain('MAJORDOMO_DEV_SEERR_USER_ID');
   });
 
   it('falls back to the status text when the error body is not JSON', async () => {

@@ -1,6 +1,6 @@
 ---
 created_at: 2026-10-21T01:34:23Z
-updated_at: 2026-10-21T01:34:23Z
+updated_at: 2026-10-21T10:48:18Z
 status: accepted
 ---
 
@@ -21,3 +21,4 @@ The agent's Seerr tools are hand-authored over a thin client in `agent/lib/seerr
 - The model can't reach unrelated Seerr operations, which enforces the agent's scope structurally rather than by instruction.
 - Each new Seerr capability needs a client method, a schema (0019) and a tool.
 - The client authenticates with one admin API key in the `X-Api-Key` header.
+- Amended by 0025: the client also sends `X-API-User` with the requester's Seerr user id on every call, and requests no longer carry `tags`, so the spec's missing `tags` field no longer motivates hand-authoring. The rest of this decision stands.

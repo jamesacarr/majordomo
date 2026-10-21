@@ -1,6 +1,6 @@
 # majordomo
 
-A household agent built on [eve](https://eve.dev). Allowlisted people talk to it through a Telegram bot and it routes their requests to home services. The first capability is requesting movies and TV shows through [Seerr](https://seerr.dev), with every request confirmed before submission and tagged with the requester's name.
+A household agent built on [eve](https://eve.dev). Allowlisted people talk to it through a Telegram bot and it routes their requests to home services. The first capability is requesting movies and TV shows through [Seerr](https://seerr.dev), with every request confirmed before submission and made as the person's own Seerr user, so their Seerr permissions, approval rules and quota apply.
 
 ## Getting started
 

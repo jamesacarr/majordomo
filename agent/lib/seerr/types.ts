@@ -2,7 +2,6 @@ import type { z } from 'zod';
 
 import type {
   combinedCreditsSchema,
-  createdRequestSchema,
   mediaInfoSchema,
   mediaRequestSchema,
   movieDetailsSchema,
@@ -62,15 +61,13 @@ export type ServiceServer = z.output<typeof serviceServerSchema>;
 export type ServiceTag = z.output<typeof serviceTagSchema>;
 export type ServiceServerDetails = z.output<typeof serviceServerDetailsSchema>;
 export type MediaRequest = z.output<typeof mediaRequestSchema>;
-export type CreatedRequest = z.output<typeof createdRequestSchema>;
 export type RequestPage = z.output<typeof requestPageSchema>;
 
-/** `POST /request`. `tags` is undocumented in the spec but read by `MediaRequest.request` in 3.4.1. */
+/** `POST /request`. The requester is the client's `X-API-User`. */
 export interface CreateRequestBody {
   readonly mediaId: number;
   readonly mediaType: MediaType;
   readonly seasons?: readonly number[] | 'all';
-  readonly tags: readonly number[];
 }
 
 export interface ListRequestsParams {
@@ -85,14 +82,19 @@ export interface ListRequestsParams {
     | 'deleted'
     | 'completed';
   readonly mediaType?: MediaType | 'all';
+  /**
+   * The Seerr user whose requests to list. Required: a caller with
+   * `MANAGE_REQUESTS` or `REQUEST_VIEW` would otherwise get everyone's.
+   */
+  readonly requestedBy: number;
   readonly skip?: number;
   readonly sort?: 'added' | 'modified';
   readonly take?: number;
 }
 
 export interface Client {
-  readonly createRequest: (body: CreateRequestBody) => Promise<CreatedRequest>;
-  readonly listRequests: (params?: ListRequestsParams) => Promise<RequestPage>;
+  readonly createRequest: (body: CreateRequestBody) => Promise<MediaRequest>;
+  readonly listRequests: (params: ListRequestsParams) => Promise<RequestPage>;
   readonly movie: (id: number) => Promise<MovieDetails>;
   readonly movieRecommendations: (id: number) => Promise<MoviePage>;
   readonly movieSimilar: (id: number) => Promise<MoviePage>;

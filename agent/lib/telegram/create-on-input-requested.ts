@@ -6,9 +6,11 @@ import {
   registerTelegramFreeformPrompt,
   renderTelegramInputRequest,
 } from 'eve/channels/telegram';
+import type { SessionContext } from 'eve/tools';
 
 import { getClient } from '../media/get-client';
 import type { MediaRef } from '../media/types';
+import { requireRequester } from '../require-requester';
 import type { Client } from '../seerr/types';
 import { classifyRequest } from './classify-request';
 import { MAX_THROTTLE_WAIT_MS, POSTER_FETCH_TIMEOUT_MS } from './constants';
@@ -122,18 +124,25 @@ const postPrompt = async (
  * title gets one card. The cards are best effort: a failed card never stops
  * the keyboard, and a card Telegram throttles ends the cards and delays the
  * keyboard until the chat clears, at most `MAX_THROTTLE_WAIT_MS`. Every other request renders exactly as eve's default.
+ *
+ * `makeClient` gets the session eve passes the handler, so cards are fetched
+ * as the person's own Seerr user. A session with no identity makes it throw,
+ * which `fetchCards` turns into no cards.
  */
 export const createOnInputRequested =
   (
-    makeClient: () => CardClient = () => getClient(),
+    makeClient: (ctx: SessionContext) => CardClient = ctx =>
+      getClient(requireRequester(ctx).seerrUserId),
   ): NonNullable<TelegramChannelEvents['input.requested']> =>
-  async (data, channel) => {
+  async (data, channel, ctx) => {
+    const sessionClient = () => makeClient(ctx);
+
     for (const request of data.requests) {
       const preview = classifyRequest(request);
 
       if (preview.kind === 'pick') {
         await waitOutThrottle(
-          await sendPickCards(channel, makeClient, preview.titles),
+          await sendPickCards(channel, sessionClient, preview.titles),
         );
         await postPrompt(channel, numberOptions(request));
         continue;
@@ -141,7 +150,7 @@ export const createOnInputRequested =
 
       if (preview.kind === 'approval') {
         await waitOutThrottle(
-          await sendApprovalCard(channel, makeClient, preview.ref),
+          await sendApprovalCard(channel, sessionClient, preview.ref),
         );
       }
 

@@ -254,11 +254,6 @@ export const mediaRequestSchema = z.object({
   type: z.enum(['movie', 'tv']).nullish(),
 });
 
-/** The request `POST /request` creates. It must echo the tags sent, so they are required here. */
-export const createdRequestSchema = mediaRequestSchema.extend({
-  tags: z.array(z.number()),
-});
-
 export const requestPageSchema = z.object({
   pageInfo: z
     .object({

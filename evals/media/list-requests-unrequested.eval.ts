@@ -9,23 +9,13 @@ export default defineEval<typeof config>({
   description:
     'A status question about a title nobody requested falls back from get_media_requests to search_media.',
   async test(t) {
-    await t.context.seerr.withTags(
-      [
-        { id: 1, label: 'seerr' },
-        { id: 2, label: 'eval-tester' },
-      ],
-      async () => {
-        const turn = await t.send("What's the status of Arrival?");
+    const turn = await t.send("What's the status of Arrival?");
 
-        t.succeeded();
-        t.toolOrder(['get_media_requests', 'search_media']);
-        t.check(
-          turn.message,
-          includes(
-            /n.t (been )?requested|isn.t on the server|not on the server/iu,
-          ),
-        );
-      },
+    t.succeeded();
+    t.toolOrder(['get_media_requests', 'search_media']);
+    t.check(
+      turn.message,
+      includes(/n.t (been )?requested|isn.t on the server|not on the server/iu),
     );
   },
   timeoutMs: 300_000,

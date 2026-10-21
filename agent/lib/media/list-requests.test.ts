@@ -1,43 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '../seerr/api-error';
-import { SEERR_TAG } from '../seerr/constants';
 import type {
+  Client,
   ListRequestsParams,
   MediaRequest,
   MediaType,
   MovieDetails,
-  ServiceServer,
-  ServiceTag,
   TvDetails,
 } from '../seerr/types';
-import type { AllowedUser } from '../types';
 import { listRequests } from './list-requests';
 
-const requester: AllowedUser = { name: 'Mary Jane', tag: 'mary-jane' };
-
-/** Mary Jane's tag id differs per service, so a show carrying the Radarr id isn't hers. */
-const RADARR_ID = 9;
-const SONARR_ID = 7;
-
-const radarrTags: ServiceTag[] = [
-  { id: 1, label: SEERR_TAG },
-  { id: RADARR_ID, label: 'mary-jane' },
-];
-
-const sonarrTags: ServiceTag[] = [
-  { id: 1, label: SEERR_TAG },
-  { id: SONARR_ID, label: 'mary-jane' },
-];
-
-const withoutRequester: ServiceTag[] = [{ id: 1, label: SEERR_TAG }];
-
-const defaultServer: ServiceServer = {
-  id: 0,
-  is4k: false,
-  isDefault: true,
-  name: 'Main',
-};
+const SEERR_USER_ID = 7;
 
 /** A completed, available request for `tmdbId`, made on 1 March 2025 unless overridden. */
 const requestFor = (
@@ -50,7 +24,6 @@ const requestFor = (
   id,
   media: { mediaType, status: 5, tmdbId },
   status: 5,
-  tags: [1, mediaType === 'movie' ? RADARR_ID : SONARR_ID],
   type: mediaType,
   ...overrides,
 });
@@ -58,28 +31,21 @@ const requestFor = (
 const movieTitle = (tmdbId: number): string => `Movie ${tmdbId}`;
 
 /**
- * An in-memory Seerr holding `requests` (newest first), one default server per
- * service, and a detail page for every id: `Movie <id>` (2001) or
- * `Show <id>` (2010) unless `failures` names the id. Records every
- * `listRequests` call and tag lookup.
+ * An in-memory Seerr holding one user's `requests` (newest first), answering
+ * at most `take` of them, and a detail page for every id: `Movie <id>` (2001)
+ * or `Show <id>` (2010) unless `failures` names the id. Typed without the
+ * `/service` methods. Records every `listRequests` call.
  */
 const fakeSeerr = ({
   failures = new Map<number, Error>(),
   list,
-  radarr = radarrTags,
-  radarrServers = [defaultServer],
   requests = [],
-  sonarr = sonarrTags,
 }: {
   readonly failures?: Map<number, Error>;
   readonly list?: () => Promise<never>;
-  readonly radarr?: ServiceTag[];
-  readonly radarrServers?: ServiceServer[];
   readonly requests?: MediaRequest[];
-  readonly sonarr?: ServiceTag[];
 } = {}) => {
-  const listCalls: (ListRequestsParams | undefined)[] = [];
-  const tagLookups: string[] = [];
+  const listCalls: ListRequestsParams[] = [];
 
   const detail = <T>(id: number, page: T): Promise<T> => {
     const failure = failures.get(id);
@@ -89,54 +55,34 @@ const fakeSeerr = ({
       : Promise.reject(failure);
   };
 
-  return {
-    client: {
-      listRequests: (params?: ListRequestsParams) => {
-        listCalls.push(params);
+  const client: Pick<Client, 'listRequests' | 'movie' | 'tv'> = {
+    listRequests: params => {
+      listCalls.push(params);
 
-        return list === undefined
-          ? Promise.resolve({ results: requests })
-          : list();
-      },
-      movie: (id: number) =>
-        detail<MovieDetails>(id, {
-          id,
-          releaseDate: '2001-05-04',
-          title: movieTitle(id),
-        }),
-      radarrServer: (_id: number) => {
-        tagLookups.push('Radarr');
-
-        return Promise.resolve({ server: defaultServer, tags: radarr });
-      },
-      radarrServers: () => Promise.resolve(radarrServers),
-      sonarrServer: (_id: number) => {
-        tagLookups.push('Sonarr');
-
-        return Promise.resolve({ server: defaultServer, tags: sonarr });
-      },
-      sonarrServers: () => Promise.resolve([defaultServer]),
-      tv: (id: number) =>
-        detail<TvDetails>(id, {
-          firstAirDate: '2010-09-01',
-          id,
-          name: `Show ${id}`,
-        }),
+      return list === undefined
+        ? Promise.resolve({ results: requests.slice(0, params.take) })
+        : list();
     },
-    listCalls,
-    tagLookups,
+    movie: id =>
+      detail<MovieDetails>(id, {
+        id,
+        releaseDate: '2001-05-04',
+        title: movieTitle(id),
+      }),
+    tv: id =>
+      detail<TvDetails>(id, {
+        firstAirDate: '2010-09-01',
+        id,
+        name: `Show ${id}`,
+      }),
   };
-};
 
-const unusedRequester = (): never => {
-  throw new Error('getRequester should not be called');
+  return { client, listCalls };
 };
-
-const getRequester = (): AllowedUser => requester;
 
 describe('listRequests', () => {
-  it('fetches the 100 newest requests without tag lookups and returns exactly the row fields', async () => {
-    const { client, listCalls, tagLookups } = fakeSeerr({
+  it('fetches the requester’s 20 newest requests and returns exactly the row fields', async () => {
+    const { client, listCalls } = fakeSeerr({
       requests: [
         requestFor(2, 'tv', 95_396, {
           media: { status: 3, tmdbId: 95_396 },
@@ -146,10 +92,11 @@ describe('listRequests', () => {
       ],
     });
 
-    const result = await listRequests(client, {}, unusedRequester);
+    const result = await listRequests(client, SEERR_USER_ID, {});
 
-    expect(listCalls).toStrictEqual([{ sort: 'added', take: 100 }]);
-    expect(tagLookups).toStrictEqual([]);
+    expect(listCalls).toStrictEqual([
+      { requestedBy: SEERR_USER_ID, sort: 'added', take: 20 },
+    ]);
     expect(result).toStrictEqual({
       requests: [
         {
@@ -170,192 +117,72 @@ describe('listRequests', () => {
     });
   });
 
-  it.each(['available', 'processing'] as const)(
+  it('lists the requests of whichever Seerr user it is given', async () => {
+    const { client, listCalls } = fakeSeerr();
+
+    await listRequests(client, 3, {});
+
+    expect(listCalls).toMatchObject([{ requestedBy: 3 }]);
+  });
+
+  it.each(['available', 'processing', 'pending'] as const)(
     'passes filter %s through to Seerr',
     async filter => {
       const { client, listCalls } = fakeSeerr();
 
-      await listRequests(client, { filter }, unusedRequester);
+      await listRequests(client, SEERR_USER_ID, { filter });
 
-      expect(listCalls).toStrictEqual([{ filter, sort: 'added', take: 100 }]);
+      expect(listCalls).toStrictEqual([
+        { filter, requestedBy: SEERR_USER_ID, sort: 'added', take: 20 },
+      ]);
     },
   );
 
-  it('propagates a requester error from mine without fetching anything', async () => {
-    const { client, listCalls, tagLookups } = fakeSeerr();
-    const error = new Error('no requester');
-
-    await expect(
-      listRequests(client, { mine: true }, () => {
-        throw error;
-      }),
-    ).rejects.toBe(error);
-    expect(listCalls).toStrictEqual([]);
-    expect(tagLookups).toStrictEqual([]);
-  });
-
-  it('propagates the missing default server error from mine without listing requests', async () => {
-    const { client, listCalls } = fakeSeerr({
-      radarrServers: [{ ...defaultServer, is4k: true }],
-    });
-
-    await expect(
-      listRequests(client, { mine: true }, getRequester),
-    ).rejects.toThrow(/no default non-4K Radarr server/u);
-    expect(listCalls).toStrictEqual([]);
-  });
-
-  it('keeps only requests carrying the requester’s tag id for their media type', async () => {
+  it('reports a request waiting for approval as pending_approval', async () => {
     const { client } = fakeSeerr({
       requests: [
-        requestFor(6, 'movie', 1, { tags: [1, RADARR_ID] }),
-        requestFor(5, 'tv', 2, { tags: [1, SONARR_ID] }),
-        requestFor(4, 'movie', 3, { tags: [1, 42] }),
-        requestFor(3, 'movie', 4, { tags: null }),
-        requestFor(2, 'tv', 5, { tags: [1, RADARR_ID] }),
+        requestFor(1, 'movie', 1, {
+          media: { mediaType: 'movie', status: 2, tmdbId: 1 },
+          status: 1,
+        }),
       ],
     });
 
-    const result = await listRequests(client, { mine: true }, getRequester);
+    const result = await listRequests(client, SEERR_USER_ID, {
+      filter: 'pending',
+    });
 
-    expect(result.requests.map(row => row.title)).toStrictEqual([
-      'Movie 1',
-      'Show 2',
-    ]);
-    expect(result).not.toHaveProperty('tagMissingOn');
+    expect(result.requests).toMatchObject([{ status: 'pending_approval' }]);
   });
 
-  it('returns movie rows and names Sonarr when the requester’s tag is missing there', async () => {
-    const { client } = fakeSeerr({
-      requests: [
-        requestFor(2, 'tv', 2, { tags: [1, SONARR_ID] }),
-        requestFor(1, 'movie', 1),
-      ],
-      sonarr: withoutRequester,
-    });
-
-    await expect(
-      listRequests(client, { mine: true }, getRequester),
-    ).resolves.toStrictEqual({
-      requests: [
-        {
-          mediaType: 'movie',
-          requestedOn: '2025-03-01',
-          status: 'available',
-          title: 'Movie 1',
-          year: 2001,
-        },
-      ],
-      tagMissingOn: ['Sonarr'],
-    });
-  });
-
-  it('returns no rows and names both servers without listing requests when the tag is missing on both', async () => {
-    const { client, listCalls } = fakeSeerr({
-      radarr: withoutRequester,
-      requests: [requestFor(1, 'movie', 1)],
-      sonarr: withoutRequester,
-    });
-
-    await expect(
-      listRequests(client, { mine: true }, getRequester),
-    ).resolves.toStrictEqual({
-      requests: [],
-      tagMissingOn: ['Radarr', 'Sonarr'],
-    });
-    expect(listCalls).toStrictEqual([]);
-  });
-
-  it('passes filter to Seerr and still matches the tag when combined with mine', async () => {
-    const { client, listCalls } = fakeSeerr({
-      requests: [
-        requestFor(2, 'movie', 2, { tags: [1, 42] }),
-        requestFor(1, 'movie', 1),
-      ],
-    });
-
-    const result = await listRequests(
-      client,
-      { filter: 'available', mine: true },
-      getRequester,
-    );
-
-    expect(listCalls).toStrictEqual([
-      { filter: 'available', sort: 'added', take: 100 },
-    ]);
-    expect(result.requests.map(row => row.title)).toStrictEqual(['Movie 1']);
-  });
-
-  it('omits tagMissingOn when not filtering by requester', async () => {
-    const { client } = fakeSeerr({
-      radarr: withoutRequester,
-      requests: [requestFor(1, 'movie', 1)],
-    });
-
-    const result = await listRequests(client, {}, unusedRequester);
-
-    expect(result).not.toHaveProperty('tagMissingOn');
-  });
-
-  it('returns the first 20 of 25 matching requests in Seerr’s order', async () => {
+  it('returns the 20 newest requests in Seerr’s order', async () => {
     const requests = Array.from({ length: 25 }, (_, i) =>
       requestFor(100 - i, 'movie', i + 1),
     );
     const { client } = fakeSeerr({ requests });
 
-    const result = await listRequests(client, {}, unusedRequester);
+    const result = await listRequests(client, SEERR_USER_ID, {});
 
     expect(result.requests.map(row => row.title)).toStrictEqual(
       Array.from({ length: 20 }, (_, i) => movieTitle(i + 1)),
     );
   });
 
-  it('still returns 20 valid rows when invalid rows are interleaved', async () => {
-    const valid = Array.from({ length: 25 }, (_, i) =>
+  it('shows a show requested in several batches once, so the list can be shorter than 20', async () => {
+    const batches = Array.from({ length: 5 }, (_, i) =>
+      requestFor(200 - i, 'tv', 95_396),
+    );
+    const movies = Array.from({ length: 20 }, (_, i) =>
       requestFor(100 - i, 'movie', i + 1),
     );
-    const noMedia = requestFor(200, 'movie', 900, { media: null, type: null });
-    const noTmdbId = requestFor(201, 'movie', 901, { media: { status: 5 } });
-    const noMediaType = requestFor(202, 'movie', 902, {
-      media: { mediaType: null, status: 5, tmdbId: 902 },
-      type: null,
-    });
-    const requests = [
-      ...valid.slice(0, 3),
-      noMedia,
-      ...valid.slice(3, 10),
-      noTmdbId,
-      ...valid.slice(10, 15),
-      noMediaType,
-      ...valid.slice(15),
-    ];
-    const { client } = fakeSeerr({ requests });
+    const { client } = fakeSeerr({ requests: [...batches, ...movies] });
 
-    const result = await listRequests(client, {}, unusedRequester);
+    const result = await listRequests(client, SEERR_USER_ID, {});
 
-    expect(result.requests.map(row => row.title)).toStrictEqual(
-      Array.from({ length: 20 }, (_, i) => movieTitle(i + 1)),
-    );
-  });
-
-  it('dedupes before capping, so duplicates among the newest 20 don’t cost rows', async () => {
-    const distinct = Array.from({ length: 20 }, (_, i) =>
-      requestFor(100 - i, 'movie', i + 1),
-    );
-    const requests = [
-      ...distinct.slice(0, 5),
-      requestFor(300, 'movie', 1),
-      ...distinct.slice(5, 10),
-      requestFor(301, 'movie', 2),
-      ...distinct.slice(10),
-    ];
-    const { client } = fakeSeerr({ requests });
-
-    const result = await listRequests(client, {}, unusedRequester);
-
-    expect(result.requests.map(row => row.title)).toStrictEqual(
-      Array.from({ length: 20 }, (_, i) => movieTitle(i + 1)),
-    );
+    expect(result.requests.map(row => row.title)).toStrictEqual([
+      'Show 95396',
+      ...Array.from({ length: 15 }, (_, i) => movieTitle(i + 1)),
+    ]);
   });
 
   it.each([
@@ -369,7 +196,7 @@ describe('listRequests', () => {
         requests: [requestFor(2, 'movie', 2), requestFor(1, 'movie', 1)],
       });
 
-      const result = await listRequests(client, {}, unusedRequester);
+      const result = await listRequests(client, SEERR_USER_ID, {});
 
       expect(result.requests).toStrictEqual([
         {
@@ -394,7 +221,7 @@ describe('listRequests', () => {
     const error = new ApiError(500, 'Internal Server Error');
     const { client } = fakeSeerr({ list: () => Promise.reject(error) });
 
-    await expect(listRequests(client, {}, unusedRequester)).rejects.toBe(error);
+    await expect(listRequests(client, SEERR_USER_ID, {})).rejects.toBe(error);
   });
 
   it('keeps only the newest request per title, and treats the same id with different media types as two titles', async () => {
@@ -412,7 +239,7 @@ describe('listRequests', () => {
       ],
     });
 
-    const result = await listRequests(client, {}, unusedRequester);
+    const result = await listRequests(client, SEERR_USER_ID, {});
 
     expect(result.requests).toStrictEqual([
       {
@@ -444,7 +271,7 @@ describe('listRequests', () => {
       ],
     });
 
-    const result = await listRequests(client, {}, unusedRequester);
+    const result = await listRequests(client, SEERR_USER_ID, {});
 
     expect(result.requests.map(row => row.title)).toStrictEqual(['Movie 1']);
   });
@@ -454,7 +281,7 @@ describe('listRequests', () => {
       requests: [requestFor(1, 'tv', 2, { type: null })],
     });
 
-    const result = await listRequests(client, {}, unusedRequester);
+    const result = await listRequests(client, SEERR_USER_ID, {});
 
     expect(result.requests.map(row => row.mediaType)).toStrictEqual(['tv']);
   });
@@ -468,7 +295,7 @@ describe('listRequests', () => {
       ],
     });
 
-    const result = await listRequests(client, {}, unusedRequester);
+    const result = await listRequests(client, SEERR_USER_ID, {});
 
     expect(result.requests).toMatchObject([
       { mediaType: 'movie', title: 'Movie 2' },
@@ -480,7 +307,7 @@ describe('listRequests', () => {
       requests: [requestFor(1, 'movie', 1, { createdAt: null })],
     });
 
-    const result = await listRequests(client, {}, unusedRequester);
+    const result = await listRequests(client, SEERR_USER_ID, {});
 
     expect(result.requests).toMatchObject([{ requestedOn: null }]);
   });
@@ -489,7 +316,7 @@ describe('listRequests', () => {
     const { client } = fakeSeerr();
 
     await expect(
-      listRequests(client, {}, unusedRequester),
+      listRequests(client, SEERR_USER_ID, {}),
     ).resolves.toStrictEqual({ requests: [] });
   });
 });

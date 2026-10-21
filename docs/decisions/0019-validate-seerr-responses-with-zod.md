@@ -1,6 +1,6 @@
 ---
 created_at: 2026-10-21T01:34:23Z
-updated_at: 2026-10-21T01:34:23Z
+updated_at: 2026-10-21T10:48:18Z
 status: accepted
 ---
 
@@ -25,3 +25,5 @@ Schemas require only what the logic depends on: `id`, `mediaType`, `title` or `n
 ## Consequences
 
 An upstream change to a required field makes the affected calls fail loudly instead of returning wrong answers. An over-strict schema would turn a harmless upstream change into every search failing, which is why so little is required.
+
+Amended by 0025: requests no longer carry `tags`, so `createRequest` parses its answer with `mediaRequestSchema`, where `tags` is optional, and no request schema requires them. The rest of this decision stands.

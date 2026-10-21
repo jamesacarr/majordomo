@@ -4,24 +4,19 @@ import { ALLOWLIST_ENV } from './constants';
 import { parseAllowlist } from './parse-allowlist';
 
 describe('parseAllowlist', () => {
-  it('maps each Telegram user id to a name and a slugified tag', () => {
-    const users = parseAllowlist(
-      '{"123456789":"Alice","987654321":"Bob Smith"}',
-    );
+  it('maps each Telegram user id to a Seerr user id', () => {
+    const users = parseAllowlist('{"123456789":7,"987654321":12}');
 
-    expect(users.get('123456789')).toEqual({ name: 'Alice', tag: 'alice' });
-    expect(users.get('987654321')).toEqual({
-      name: 'Bob Smith',
-      tag: 'bob-smith',
-    });
+    expect(users.get('123456789')).toEqual({ seerrUserId: 7 });
+    expect(users.get('987654321')).toEqual({ seerrUserId: 12 });
     expect(users.size).toBe(2);
   });
 
-  it('trims surrounding whitespace from names before deriving the tag', () => {
-    expect(parseAllowlist('{"1":"  Alice "}').get('1')).toEqual({
-      name: 'Alice',
-      tag: 'alice',
-    });
+  it('lets two Telegram accounts act as the same Seerr user', () => {
+    const users = parseAllowlist('{"100":7,"200":7}');
+
+    expect(users.get('100')).toEqual({ seerrUserId: 7 });
+    expect(users.get('200')).toEqual({ seerrUserId: 7 });
   });
 
   it('throws when the env var is unset or blank', () => {
@@ -32,35 +27,29 @@ describe('parseAllowlist', () => {
   });
 
   it('throws on malformed JSON', () => {
-    expect(() => parseAllowlist('{"123":"Alice"')).toThrow(
+    expect(() => parseAllowlist('{"123":7')).toThrow(
       `${ALLOWLIST_ENV} is not valid JSON`,
     );
   });
 
+  it('throws when the JSON is not an object', () => {
+    expect(() => parseAllowlist('[7]')).toThrow(
+      `${ALLOWLIST_ENV} is malformed`,
+    );
+  });
+
   it.each([
-    ['an array', '["Alice"]'],
-    ['a non-numeric user id', '{"alice":"Alice"}'],
-    ['a non-string name', '{"123":42}'],
-    ['an empty name', '{"123":""}'],
-  ])('throws when the JSON is %s', (_label, raw) => {
-    expect(() => parseAllowlist(raw)).toThrow(`${ALLOWLIST_ENV} is malformed`);
-  });
-
-  it('names the offending key in the error', () => {
-    expect(() => parseAllowlist('{"123":"Alice","456":""}')).toThrow(
-      'at "456"',
-    );
-  });
-
-  it('throws when a name has nothing to make a tag from', () => {
-    expect(() => parseAllowlist('{"123":"Alice","456":"美咲"}')).toThrow(
-      `${ALLOWLIST_ENV} is malformed at "456"`,
-    );
-  });
-
-  it('throws when two people would share a tag, naming both ids and the tag', () => {
-    expect(() =>
-      parseAllowlist('{"300":"Mary Jane","500":"Mary-Jane"}'),
-    ).toThrow('ids "300" and "500" both map to tag "mary-jane"');
-  });
+    ['a non-numeric Telegram id', '{"123":7,"alice":8}', 'alice'],
+    ['a Seerr id written as a string', '{"123":7,"456":"7"}', '456'],
+    ['a zero Seerr id', '{"123":7,"456":0}', '456'],
+    ['a negative Seerr id', '{"123":7,"456":-3}', '456'],
+    ['a fractional Seerr id', '{"123":7,"456":1.5}', '456'],
+  ])(
+    'throws on %s, naming the variable and the entry',
+    (_label, raw, entry) => {
+      expect(() => parseAllowlist(raw)).toThrow(
+        `${ALLOWLIST_ENV} is malformed at "${entry}"`,
+      );
+    },
+  );
 });

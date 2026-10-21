@@ -3,12 +3,14 @@ import { z } from 'zod';
 
 import { findPersonCredits } from '../lib/media/find-person-credits';
 import { getClient } from '../lib/media/get-client';
+import { requireRequester } from '../lib/require-requester';
 
 // Binding only; the behaviour and its tests live under agent/lib/media/.
 export default defineTool({
   description:
     "Find movies and TV shows a person acted in or directed, by the person's name. Uses the top match for that name. Returns their name and up to 8 acting and directing credits, best known first, each with its TMDB id, type, year, a short overview, and availability on the server.",
-  execute: input => findPersonCredits(getClient(), input),
+  execute: (input, ctx) =>
+    findPersonCredits(getClient(requireRequester(ctx).seerrUserId), input),
   inputSchema: z.object({
     mediaType: z
       .enum(['movie', 'tv'])

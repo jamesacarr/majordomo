@@ -7,6 +7,8 @@ import { renderTelegramInputRequest } from 'eve/channels/telegram';
 import type { SessionContext } from 'eve/tools';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ALLOWLIST_AUTHENTICATOR } from '../constants';
+import { SEERR_API_KEY_ENV, SEERR_URL_ENV } from '../media/constants';
 import type { MovieDetails } from '../seerr/types';
 import { MAX_THROTTLE_WAIT_MS, POSTER_FETCH_TIMEOUT_MS } from './constants';
 import { createOnInputRequested } from './create-on-input-requested';
@@ -63,6 +65,30 @@ const approval = (tmdbId: number): InputRequest => ({
   requestId: 'approval-1',
 });
 
+/** The session context eve hands the handler for a Telegram user acting as Seerr user `seerrUserId`. */
+const sessionFor = (seerrUserId: string | null): SessionContext =>
+  ({
+    session: {
+      auth: {
+        current:
+          seerrUserId === null
+            ? null
+            : {
+                attributes: { seerr_user_id: seerrUserId },
+                authenticator: ALLOWLIST_AUTHENTICATOR,
+                issuer: 'telegram',
+                principalId: 'telegram:42',
+                principalType: 'user',
+              },
+        initiator: null,
+      },
+      id: 'session-1',
+      turn: { id: 'turn-1', sequence: 1 },
+    },
+  }) as SessionContext;
+
+const session = sessionFor('7');
+
 type ApiResponse = Awaited<ReturnType<TelegramHandle['request']>>;
 
 const OK: ApiResponse = { body: {}, ok: true, status: 200 };
@@ -104,7 +130,7 @@ const channelFor = (answer: (body: unknown) => ApiResponse = () => OK) => {
 
 const run = async (
   requests: readonly InputRequest[],
-  makeClient: () => ReturnType<typeof seerr> = seerr,
+  makeClient: (ctx: SessionContext) => ReturnType<typeof seerr> = seerr,
   answer?: (body: unknown) => ApiResponse,
 ) => {
   const fake = channelFor(answer);
@@ -112,7 +138,7 @@ const run = async (
   await createOnInputRequested(makeClient)(
     { requests, sequence: 1, stepIndex: 0, turnId: 'turn-1' },
     fake.channel,
-    {} as SessionContext,
+    session,
   );
 
   return fake;
@@ -136,14 +162,14 @@ const throttlePhotoOf =
 /** Starts the handler without awaiting it, so fake timers can step through its waits. */
 const start = (
   requests: readonly InputRequest[],
-  makeClient: () => ReturnType<typeof seerr>,
+  makeClient: (ctx: SessionContext) => ReturnType<typeof seerr>,
   answer?: (body: unknown) => ApiResponse,
 ) => {
   const fake = channelFor(answer);
   const done = createOnInputRequested(makeClient)(
     { requests, sequence: 1, stepIndex: 0, turnId: 'turn-1' },
     fake.channel,
-    {} as SessionContext,
+    session,
   );
 
   return { ...fake, done };
@@ -151,6 +177,8 @@ const start = (
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe('createOnInputRequested', () => {
@@ -386,7 +414,7 @@ describe('createOnInputRequested', () => {
         turnId: 'turn-1',
       },
       fake.channel,
-      {} as SessionContext,
+      session,
     );
 
     expect(fake.state.hitlPrompts).toBeUndefined();
@@ -407,5 +435,66 @@ describe('createOnInputRequested', () => {
       'post',
     ]);
     expect(Object.keys(state.hitlPrompts ?? {})).toEqual(['pick-1', 'other-1']);
+  });
+
+  it('builds the Seerr client from the session the handler was called with', async () => {
+    const makeClient = vi.fn((_ctx: SessionContext) => seerr());
+
+    await run([approval(1)], makeClient);
+
+    expect(makeClient).toHaveBeenCalledWith(session);
+  });
+
+  describe('default client', () => {
+    const headersSent: (string | undefined)[] = [];
+
+    const stubSeerr = () => {
+      headersSent.length = 0;
+      vi.stubEnv('EVE_DEV', '');
+      vi.stubEnv(SEERR_URL_ENV, 'https://seerr.example.test');
+      vi.stubEnv(SEERR_API_KEY_ENV, 'secret-key');
+      vi.stubGlobal('fetch', (_input: string, init?: RequestInit) => {
+        headersSent.push(
+          new Headers(init?.headers).get('X-API-User') ?? undefined,
+        );
+
+        return Promise.resolve(Response.json(movie(1, '/1.jpg')));
+      });
+    };
+
+    const runDefault = async (ctx: SessionContext) => {
+      const fake = channelFor();
+
+      await createOnInputRequested()(
+        {
+          requests: [approval(1)],
+          sequence: 1,
+          stepIndex: 0,
+          turnId: 'turn-1',
+        },
+        fake.channel,
+        ctx,
+      );
+
+      return fake;
+    };
+
+    it('acts as the session’s Seerr user', async () => {
+      stubSeerr();
+
+      const { calls } = await runDefault(sessionFor('7'));
+
+      expect(headersSent).toStrictEqual(['7']);
+      expect(calls.map(call => call.method)).toEqual(['sendPhoto', 'post']);
+    });
+
+    it('sends no cards but still posts the keyboard for a session with no identity', async () => {
+      stubSeerr();
+
+      const { calls } = await runDefault(sessionFor(null));
+
+      expect(headersSent).toStrictEqual([]);
+      expect(calls.map(call => call.method)).toEqual(['post']);
+    });
   });
 });

@@ -5,7 +5,7 @@ import { REQUEST_TIMEOUT_MS } from './constants';
 import { ResponseShapeError } from './response-shape-error';
 import {
   combinedCreditsSchema,
-  createdRequestSchema,
+  mediaRequestSchema,
   movieDetailsSchema,
   moviePageSchema,
   personSearchPageSchema,
@@ -17,6 +17,7 @@ import {
   tvPageSchema,
 } from './schemas';
 import type { Client } from './types';
+import { UnknownUserError } from './unknown-user-error';
 
 type Query = Readonly<Record<string, string | number>>;
 
@@ -44,31 +45,63 @@ const toQueryString = (query: Query): string => {
 const isTimeout = (error: unknown): boolean =>
   error instanceof Error && error.name === 'TimeoutError';
 
-/** Seerr's error handler answers `{ message, errors }`; anything else falls back to the status text. */
-const readErrorMessage = async (response: Response): Promise<string> => {
+const readJson = async (response: Response): Promise<unknown> => {
   try {
-    const body: unknown = await response.json();
-
-    if (
-      typeof body === 'object' &&
-      body !== null &&
-      'message' in body &&
-      typeof body.message === 'string' &&
-      body.message !== ''
-    ) {
-      return body.message;
-    }
+    return await response.json();
   } catch {
-    // Not JSON; use the status text below.
+    return undefined;
+  }
+};
+
+const stringField = (body: unknown, key: string): string | null => {
+  if (typeof body !== 'object' || body === null || !(key in body)) {
+    return null;
   }
 
-  return response.statusText || 'no error message';
+  const value: unknown = (body as Record<string, unknown>)[key];
+
+  return typeof value === 'string' && value !== '' ? value : null;
+};
+
+/**
+ * Turns a non-2xx answer into the error to throw. Seerr's error handler
+ * answers `{ message, errors }`; anything else falls back to the status text.
+ *
+ * Seerr's `isAuthenticated` middleware answers 403 `{ status, error }`, with no
+ * `message`, both when `X-API-User` names no user and when the user lacks the
+ * route's permission (`server/middleware/auth.ts`). Every route this client
+ * calls mounts `isAuthenticated()` with no permission
+ * (`server/routes/index.ts`), so here it can only mean "no such user". A call
+ * to a permission-gated route (e.g. `/settings`) would need this revisited.
+ */
+const toError = async (
+  response: Response,
+  seerrUserId: number,
+): Promise<Error> => {
+  const body = await readJson(response);
+  const message = stringField(body, 'message');
+
+  if (
+    response.status === 403 &&
+    message === null &&
+    stringField(body, 'error') !== null
+  ) {
+    return new UnknownUserError(seerrUserId);
+  }
+
+  return new ApiError(
+    response.status,
+    message ?? (response.statusText || 'no error message'),
+  );
 };
 
 /**
  * Builds a client for the Seerr v1 API at `baseUrl` (the instance root, without
- * `/api/v1`), authenticated with the `X-Api-Key` header. Non-2xx responses
- * throw an `ApiError`. Every answer is parsed with its schema from
+ * `/api/v1`), authenticated with the admin `X-Api-Key` and acting as Seerr
+ * user `seerrUserId` through `X-API-User`, so Seerr applies that person's
+ * permissions, auto-approval and quota and records them as the requester.
+ * Non-2xx responses throw an `ApiError`, except an unknown `seerrUserId`,
+ * which throws an `UnknownUserError`. Every answer is parsed with its schema from
  * `schemas.ts`, and one that does not match throws a `ResponseShapeError`
  * naming the path and the field, so a Seerr upgrade that renames a field
  * fails at the call rather than as an `undefined` further on. A call that
@@ -81,11 +114,13 @@ export const createClient = ({
   apiKey,
   baseUrl,
   fetch = globalThis.fetch,
+  seerrUserId,
   timeoutMs = REQUEST_TIMEOUT_MS,
 }: {
   readonly apiKey: string;
   readonly baseUrl: string;
   readonly fetch?: typeof globalThis.fetch;
+  readonly seerrUserId: number;
   readonly timeoutMs?: number;
 }): Client => {
   const root = `${baseUrl.replace(/\/+$/u, '')}/api/v1`;
@@ -100,6 +135,7 @@ export const createClient = ({
   ): Promise<z.output<T>> => {
     const headers: Record<string, string> = {
       Accept: 'application/json',
+      'X-API-User': String(seerrUserId),
       'X-Api-Key': apiKey,
     };
     const init: RequestInit = {
@@ -121,7 +157,7 @@ export const createClient = ({
       );
 
       if (!response.ok) {
-        throw new ApiError(response.status, await readErrorMessage(response));
+        throw await toError(response, seerrUserId);
       }
 
       const parsed = schema.safeParse(await response.json());
@@ -146,8 +182,8 @@ export const createClient = ({
   };
 
   return {
-    createRequest: body => call('/request', createdRequestSchema, { body }),
-    listRequests: (params = {}) =>
+    createRequest: body => call('/request', mediaRequestSchema, { body }),
+    listRequests: params =>
       call('/request', requestPageSchema, { query: { ...params } }),
     movie: id => call(`/movie/${id}`, movieDetailsSchema),
     movieRecommendations: id =>
