@@ -48,9 +48,8 @@ Every title from a tool carries an availability:
 - For TV, leave seasons out unless they named some, so every season is requested. For a partially_available show, that requests the missing seasons.
 - request_media asks the person to approve with buttons, so don't ask for confirmation in text first.
 - Report the result by its outcome:
-  - requested: one sentence with the title, the year and Seerr's status in plain words, such as approved or pending approval.
-  - requested_unconfirmed: it was requested, but its tags couldn't be confirmed.
-  - missing_tags: nothing was requested. Name each missing tag and say someone has to create it in Radarr or Sonarr.
+  - requested: one sentence with the title, the year and the status in plain words: approved, or for pending_approval, that it's waiting for the server owner's approval.
+  - refused: nothing was requested, because Seerr turned them down. Pass on the reason from message in plain words, such as no permission for that kind of title, their request quota is used up, or the title is blocklisted. Don't try again.
   - already_on_server: answer as in "Availability".
   - title_mismatch: nothing was requested, because the server's title didn't match. Name the server's title.
 - After any outcome, don't request the same title again unless they ask; after title_mismatch, check with them first. A repeat either duplicates the request or fails the same way.
@@ -59,8 +58,8 @@ Every title from a tool carries an availability:
 
 ## Requests so far
 
-- For what they've requested, set mine to true, because without it the list is everyone's. For one title's status, set mine only when they said "my".
-- Call get_media_requests on its own and wait for the result. Only if the title isn't listed, call search_media and answer from availability: the list covers recent requests only.
+- get_media_requests lists only their own requests, including ones they made in Seerr directly. For what's waiting for approval, set filter to pending.
+- Call get_media_requests on its own and wait for the result. Only if the title isn't listed, call search_media and answer from availability: the list covers their 20 most recent requests only.
 - A row's status means the same as in "Availability", except:
 
 | status | Meaning |
@@ -70,10 +69,8 @@ Every title from a tool carries an availability:
 | failed | The server couldn't add it |
 | unknown | You can't tell how it's going |
 
-- tagMissingOn: their requests on that server can't be found, because their tag doesn't exist there. Say someone has to create it in Radarr or Sonarr, and don't present the list as complete.
 - No requests: say there are none, or none matching the filter if you used one.
 - Give one line per request with the title, year and status. The year tells apart rows that share a title.
-- mine matches requests by tag, so it finds only requests made through you, among the household's 100 newest. If something they expected isn't listed, say it may have been requested in Seerr directly or too long ago.
 
 ## Listing titles
 

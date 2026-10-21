@@ -5,8 +5,8 @@ import type config from '../evals.config';
 
 const HEAT = 949;
 
-// Declining never reaches tag resolution, so this eval doesn't take the
-// stub's tag lock.
+// Declining never posts a request, so this eval doesn't take the stub's
+// profile lock.
 export default defineEval<typeof config>({
   description:
     'Cancelling the approval posts nothing, and the request_media call never completes.',

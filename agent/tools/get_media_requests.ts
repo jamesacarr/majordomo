@@ -6,24 +6,21 @@ import { listRequests } from '../lib/media/list-requests';
 import { requireRequester } from '../lib/require-requester';
 
 // Binding only; the behaviour and its tests live under agent/lib/media/.
-// listRequests calls the requester thunk only for `mine`, so a session with
-// no identity can still list everyone's requests.
 export default defineTool({
   description:
-    'List up to 20 recent media requests, newest first, each with its title, year, type, status and requested date. Set mine to true to list only the person asking’s requests. Set filter to narrow by state.',
-  execute: (input, ctx) =>
-    listRequests(getClient(), input, () => requireRequester(ctx)),
+    "List up to 20 of the person asking's own media requests, newest first, each with its title, year, type, status and requested date. Includes requests they made in Seerr itself. Set filter to narrow by state.",
+  execute: (input, ctx) => {
+    const { seerrUserId } = requireRequester(ctx);
+
+    return listRequests(getClient(seerrUserId), seerrUserId, input);
+  },
   inputSchema: z.object({
     filter: z
-      .enum(['available', 'processing'])
+      .enum(['available', 'processing', 'pending'])
       .optional()
       .describe(
-        'available: on the server. processing: approved and on its way, including partly downloaded shows. Leave it out for every state.',
+        'available: on the server. processing: approved and on its way, including partly downloaded shows. pending: waiting for approval. Leave it out for every state.',
       ),
-    mine: z
-      .boolean()
-      .optional()
-      .describe('True for only the person asking’s requests.'),
   }),
   label: { start: () => 'Check requests' },
 });

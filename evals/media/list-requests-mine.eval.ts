@@ -3,33 +3,26 @@ import { includes, satisfies } from 'eve/evals/expect';
 
 import type config from '../evals.config';
 
-// The requester comes from MAJORDOMO_DEV_USER ('Eval Tester'), whose tag id
-// is 2 in the stub. Fight Club carries another person's tag and The Matrix
-// none, so neither may appear.
+// The requester is Seerr user 2, from MAJORDOMO_DEV_SEERR_USER_ID in the
+// `eval` script. The stub lists only user 2's requests, including The Matrix,
+// made in Seerr's own UI. Fight Club is user 3's, so it may not appear.
 export default defineEval<typeof config>({
   description:
-    '"What have I requested?" lists only the requests carrying the requester’s tag.',
+    '"What have I requested?" lists the requester’s own Seerr requests, including ones made in Seerr itself, and no one else’s.',
   async test(t) {
-    await t.context.seerr.withTags(
-      [
-        { id: 1, label: 'seerr' },
-        { id: 2, label: 'eval-tester' },
-      ],
-      async () => {
-        const turn = await t.send('What have I requested?');
+    const turn = await t.send('What have I requested?');
 
-        t.succeeded();
-        t.calledTool('get_media_requests', { input: { mine: true } });
-        t.check(turn.message, includes('Dune'));
-        t.check(turn.message, includes('Severance'));
-        t.check(
-          turn.message,
-          satisfies<string>(
-            text => !/Fight Club|Matrix/u.test(text),
-            'names no one else’s requests',
-          ),
-        );
-      },
+    t.succeeded();
+    t.calledTool('get_media_requests');
+    t.check(turn.message, includes('Dune'));
+    t.check(turn.message, includes('Severance'));
+    t.check(turn.message, includes('Matrix'));
+    t.check(
+      turn.message,
+      satisfies<string>(
+        text => !/Fight Club/u.test(text),
+        'names no one else’s requests',
+      ),
     );
   },
   timeoutMs: 300_000,

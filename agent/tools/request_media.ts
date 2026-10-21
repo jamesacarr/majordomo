@@ -8,16 +8,17 @@ import { toApprovalPrompt } from '../lib/media/to-approval-prompt';
 import { requireRequester } from '../lib/require-requester';
 
 // Binding only; the behaviour and its tests live under agent/lib/media/.
-// requireRequester runs as an argument, so a session with no identity fails
-// before any Seerr call.
+// requireRequester runs before the client is built, so a session with no
+// identity fails before any Seerr call.
 export default defineTool({
   approval: {
     prompt: ({ input }) => toApprovalPrompt(input),
     request: always(),
   },
   description:
-    'Request one movie or TV show on the media server, tagged for the person asking. Use it only after they asked for that title. Takes the tmdbId and mediaType from search_media, get_media_recommendations, search_media_by_person or pick_media, and the title and year exactly as that result gave them. The person approves or cancels with buttons, so do not ask for confirmation first. For TV, pass seasons only when they named some. Returns an `outcome` to report.',
-  execute: (input, ctx) => request(getClient(), requireRequester(ctx), input),
+    'Request one movie or TV show on the media server as the person asking, with their own Seerr permissions, approval and quota. Use it only after they asked for that title. Takes the tmdbId and mediaType from search_media, get_media_recommendations, search_media_by_person or pick_media, and the title and year exactly as that result gave them. The person approves or cancels with buttons, so do not ask for confirmation first. For TV, pass seasons only when they named some. Returns an `outcome` to report.',
+  execute: (input, ctx) =>
+    request(getClient(requireRequester(ctx).seerrUserId), input),
   inputSchema: z.object({
     mediaType: z.enum(['movie', 'tv']),
     seasons: z

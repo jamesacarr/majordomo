@@ -41,21 +41,24 @@ export const createOnMessage =
     }
     // Matches eve's default hook, which shows the typing indicator for every accepted message.
     await ctx.telegram.startTyping();
-    return {
-      auth: {
-        attributes: {
-          chat_id: message.chat.id,
-          name: user.name,
-          tag: user.tag,
-          user_id: from.id,
-        },
-        authenticator: ALLOWLIST_AUTHENTICATOR,
-        issuer: 'telegram',
-        principalId: `telegram:${from.id}`,
-        principalType: 'user',
+
+    const auth = {
+      attributes: {
+        chat_id: message.chat.id,
+        seerr_user_id: String(user.seerrUserId),
+        user_id: from.id,
       },
-      // Auth attributes never reach the model, so the name goes in as context.
-      context: [`requester_name: ${user.name}`],
-      title: user.name,
-    };
+      authenticator: ALLOWLIST_AUTHENTICATOR,
+      issuer: 'telegram',
+      principalId: `telegram:${from.id}`,
+      principalType: 'user',
+    } as const;
+    const name = from.firstName?.trim();
+
+    if (!name) {
+      return { auth };
+    }
+
+    // Auth attributes never reach the model, so the name goes in as context.
+    return { auth, context: [`requester_name: ${name}`], title: name };
   };

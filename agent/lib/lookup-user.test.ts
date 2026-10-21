@@ -4,13 +4,10 @@ import { ALLOWLIST_ENV } from './constants';
 import { lookupUser } from './lookup-user';
 
 describe('lookupUser', () => {
-  const env = { [ALLOWLIST_ENV]: '{"123456789":"Alice"}' };
+  const env = { [ALLOWLIST_ENV]: '{"123456789":7}' };
 
   it('returns the allowlisted user', () => {
-    expect(lookupUser('123456789', env)).toEqual({
-      name: 'Alice',
-      tag: 'alice',
-    });
+    expect(lookupUser('123456789', env)).toEqual({ seerrUserId: 7 });
   });
 
   it('returns null for an id that is not listed', () => {

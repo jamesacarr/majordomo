@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ALLOWLIST_AUTHENTICATOR, ALLOWLIST_ENV } from '../constants';
 import { createOnMessage } from './create-on-message';
 
-const env = { [ALLOWLIST_ENV]: '{"123456789":"Alice"}' };
+const env = { [ALLOWLIST_ENV]: '{"123456789":7}' };
 
 const message = (
   overrides: Partial<TelegramMessage> = {},
@@ -12,7 +12,7 @@ const message = (
   attachments: [],
   caption: '',
   chat: { id: '123456789', type: 'private' },
-  from: { firstName: 'Alice', id: '123456789', isBot: false },
+  from: { firstName: 'Mary', id: '123456789', isBot: false },
   messageId: '42',
   raw: {},
   text: 'Can you get The Matrix?',
@@ -26,29 +26,56 @@ const context = () => {
 };
 
 describe('createOnMessage', () => {
-  it('admits an allowlisted user in a private chat with the allowlist identity', async () => {
+  const auth = {
+    attributes: {
+      chat_id: '123456789',
+      seerr_user_id: '7',
+      user_id: '123456789',
+    },
+    authenticator: ALLOWLIST_AUTHENTICATOR,
+    issuer: 'telegram',
+    principalId: 'telegram:123456789',
+    principalType: 'user',
+  };
+
+  it('admits an allowlisted user in a private chat with their Seerr id and Telegram name', async () => {
     const { ctx, startTyping } = context();
 
     const result = await createOnMessage(env)(ctx, message());
 
     expect(result).toEqual({
-      auth: {
-        attributes: {
-          chat_id: '123456789',
-          name: 'Alice',
-          tag: 'alice',
-          user_id: '123456789',
-        },
-        authenticator: ALLOWLIST_AUTHENTICATOR,
-        issuer: 'telegram',
-        principalId: 'telegram:123456789',
-        principalType: 'user',
-      },
-      context: ['requester_name: Alice'],
-      title: 'Alice',
+      auth,
+      context: ['requester_name: Mary'],
+      title: 'Mary',
     });
     expect(startTyping).toHaveBeenCalledOnce();
   });
+
+  it('trims the Telegram first name', async () => {
+    const { ctx } = context();
+    const padded = message({
+      from: { firstName: '  Mary ', id: '123456789', isBot: false },
+    });
+
+    await expect(createOnMessage(env)(ctx, padded)).resolves.toMatchObject({
+      context: ['requester_name: Mary'],
+      title: 'Mary',
+    });
+  });
+
+  it.each([
+    ['no first name', { id: '123456789', isBot: false }],
+    ['a blank first name', { firstName: '   ', id: '123456789', isBot: false }],
+  ])(
+    'sends no name context and no title when the sender has %s',
+    async (_label, from) => {
+      const { ctx } = context();
+
+      const result = await createOnMessage(env)(ctx, message({ from }));
+
+      expect(result).toEqual({ auth });
+    },
+  );
 
   it('accepts a photo or document with a caption and no text', async () => {
     const { ctx } = context();

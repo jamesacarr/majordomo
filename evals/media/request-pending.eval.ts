@@ -7,11 +7,11 @@ const BLADE_RUNNER = 78;
 
 export default defineEval<typeof config>({
   description:
-    'When the server has no seerr tag, an approved request posts nothing and the reply names the missing tag.',
+    'When the requester’s Seerr user doesn’t auto-approve, the request is posted and the reply says it’s waiting for approval.',
   async test(t) {
     const { seerr } = t.context;
 
-    await seerr.withTags([{ id: 2, label: 'eval-tester' }], async () => {
+    await seerr.withProfile('manual', async () => {
       const turn = await t.send('Can you get Blade Runner?');
 
       turn.parked();
@@ -24,15 +24,17 @@ export default defineEval<typeof config>({
       ]);
 
       t.calledTool('request_media', {
-        output: { missing: ['seerr'], outcome: 'missing_tags' },
+        output: { outcome: 'requested', status: 'pending_approval' },
       });
       t.check(
         seerr.requests.filter(posted => posted.mediaId === BLADE_RUNNER),
-        equals([]),
+        equals([{ mediaId: BLADE_RUNNER, mediaType: 'movie' }]),
       );
       t.check(
         next.message,
-        includes(/\bseerr\b[^.]{0,8}\btag\b|\btag\b[^.]*\bseerr\b/iu),
+        includes(
+          /waiting for [^.]{0,30}approv|pending approval|needs? approv/iu,
+        ),
       );
     });
   },

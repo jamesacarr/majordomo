@@ -3,12 +3,14 @@ import { z } from 'zod';
 
 import { details } from '../lib/media/details';
 import { getClient } from '../lib/media/get-client';
+import { requireRequester } from '../lib/require-requester';
 
 // Binding only; the behaviour and its tests live under agent/lib/media/.
 export default defineTool({
   description:
     'Get the details of one movie or TV show: genres, top-billed cast, director or creators, runtime or number of seasons, and availability on the server. Use it to answer questions about a title, such as who is in it or which version is which. Takes a TMDB id from search_media, get_media_recommendations or search_media_by_person.',
-  execute: input => details(getClient(), input),
+  execute: (input, ctx) =>
+    details(getClient(requireRequester(ctx).seerrUserId), input),
   inputSchema: z.object({
     mediaType: z.enum(['movie', 'tv']),
     tmdbId: z.number().int().positive(),

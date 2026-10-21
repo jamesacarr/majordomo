@@ -110,26 +110,27 @@ export type RequestResult = {
   | {
       readonly outcome: 'requested';
       readonly requestId: number;
+      /** `approved`, or `pending_approval` when the person's Seerr user doesn't auto-approve. */
       readonly status: RequestStatus;
-      /** The tag ids Seerr echoed back on the request. */
-      readonly tags: readonly number[];
     }
-  /** Seerr created the request but its answer didn't echo the tags, so they can't be confirmed. */
-  | { readonly outcome: 'requested_unconfirmed' }
+  /** Seerr refused the person (permission, quota or blocklist); nothing was requested. */
+  | {
+      /** Seerr's own reason, e.g. "Movie Quota exceeded." */
+      readonly message: string;
+      readonly outcome: 'refused';
+    }
   | {
       readonly availability: Availability;
       readonly outcome: 'already_on_server';
     }
   /** Seerr's title or year for the id differs from the one the person approved. */
   | { readonly outcome: 'title_mismatch' }
-  /** The tag labels with no Radarr or Sonarr tag; nothing was requested. */
-  | { readonly missing: readonly string[]; readonly outcome: 'missing_tags' }
 );
 
 /**
  * One request's progress, from `toRequestProgress`. An approved or completed
- * request reports its media's availability, since bot requests auto-approve
- * (decision 0010); otherwise the request's own state.
+ * request reports its media's availability; otherwise the request's own
+ * state, such as `pending_approval`.
  */
 export type RequestProgress =
   | Extract<
@@ -148,9 +149,7 @@ export type RequestProgress =
 /** What `get_media_requests` takes. */
 export interface ListRequestsInput {
   /** Seerr's own request filter, passed through. Omitted lists every state. */
-  readonly filter?: 'available' | 'processing' | undefined;
-  /** Only the person asking's requests, matched by their Radarr or Sonarr tag. */
-  readonly mine?: boolean | undefined;
+  readonly filter?: 'available' | 'processing' | 'pending' | undefined;
 }
 
 /** One title in `get_media_requests`' answer: the newest request for it. */
@@ -165,13 +164,8 @@ export interface RequestRow {
   readonly year: number | null;
 }
 
-/** The *arr server that holds a media type's requests: Radarr for movies, Sonarr for TV. */
-export type RequestServer = 'Radarr' | 'Sonarr';
-
 /** What `get_media_requests` hands the model. */
 export interface ListRequestsResult {
   /** Newest first, at most `MAX_REQUEST_ROWS`. */
   readonly requests: readonly RequestRow[];
-  /** Only when `mine`: servers with no tag for the requester, so their requests there can't be found. Omitted when empty. */
-  readonly tagMissingOn?: readonly RequestServer[];
 }

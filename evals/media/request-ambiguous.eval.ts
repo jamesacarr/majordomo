@@ -5,8 +5,8 @@ import type config from '../evals.config';
 
 const DUNE_1984 = 841;
 
-// Stops at the approval prompt, so it never resolves tags and doesn't take
-// the stub's tag lock.
+// Stops at the approval prompt, so it never posts a request and doesn't take
+// the stub's profile lock.
 export default defineEval<typeof config>({
   description:
     'Asking for a title with several versions asks which with pick_media, then asks to approve the chosen one.',

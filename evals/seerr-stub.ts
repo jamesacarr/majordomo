@@ -9,12 +9,6 @@ import {
   SEARCH_RESULTS,
 } from './fixtures/seerr';
 
-/** A Radarr or Sonarr tag as Seerr returns it under `/service/{radarr,sonarr}/{id}`. */
-export interface StubTag {
-  readonly id: number;
-  readonly label: string;
-}
-
 /** The body of one `POST /request` the stub received, as parsed JSON. */
 export interface RecordedRequest {
   readonly is4k?: unknown;
@@ -24,20 +18,35 @@ export interface RecordedRequest {
   readonly tags?: unknown;
 }
 
-/** Both servers carry these unless an eval swaps them with `withTags`. */
-const DEFAULT_TAGS: readonly StubTag[] = [
-  { id: 1, label: 'seerr' },
-  { id: 2, label: 'eval-tester' },
-];
+/**
+ * How Seerr answers user 2's `POST /request`: `auto` approves it (status 2),
+ * `manual` leaves it waiting for approval (status 1), and `refused` answers
+ * 403 as Seerr's `RequestPermissionError` does.
+ */
+export type StubProfile = 'auto' | 'manual' | 'refused';
 
-/** One default non-4K server per service, as a single-server Seerr lists them. */
-const SERVERS: Readonly<Record<string, readonly unknown[]>> = {
-  '/service/radarr': [{ id: 0, is4k: false, isDefault: true, name: 'Radarr' }],
-  '/service/sonarr': [{ id: 10, is4k: false, isDefault: true, name: 'Sonarr' }],
+/** The eval requester, as the `eval` script sets `MAJORDOMO_DEV_SEERR_USER_ID`. */
+const REQUESTER_ID = 2;
+
+/** Another household member, who requested Fight Club. */
+const OTHER_USER_ID = 3;
+
+const KNOWN_USERS = new Set([REQUESTER_ID, OTHER_USER_ID]);
+
+/** Seerr's `isAuthenticated()` answer when `X-API-User` names no user. */
+const NO_USER = {
+  error: 'You do not have permission to access this endpoint',
+  status: 403,
 };
 
-/** The detail paths of the servers above, which answer with the current tag set. */
-const SERVER_DETAILS = new Set(['/service/radarr/0', '/service/sonarr/10']);
+const REFUSED = {
+  message: 'You do not have permission to make movie requests.',
+};
+
+const STATUS_BY_PROFILE: Readonly<Record<'auto' | 'manual', number>> = {
+  auto: 2,
+  manual: 1,
+};
 
 const page = (results: readonly unknown[]) => ({
   page: 1,
@@ -46,12 +55,22 @@ const page = (results: readonly unknown[]) => ({
   totalResults: results.length,
 });
 
-/** Answers one Seerr v1 read from the fixtures and current tags, or `undefined` for a 404. */
-const answer = (
-  path: string,
-  query: URLSearchParams,
-  tags: readonly StubTag[],
-): unknown => {
+const requestedById = (row: unknown): unknown =>
+  (row as { readonly requestedBy?: { readonly id?: unknown } }).requestedBy?.id;
+
+/** One user's fixed `REQUESTS`, newest first, honouring `take`. */
+const requestPage = (requestedBy: number, query: URLSearchParams) => {
+  const take = Number.parseInt(query.get('take') ?? '', 10);
+  const own = REQUESTS.filter(row => requestedById(row) === requestedBy);
+
+  return {
+    pageInfo: { page: 1, pages: 1, results: own.length },
+    results: own.slice(0, Number.isNaN(take) ? own.length : take),
+  };
+};
+
+/** Answers one Seerr v1 read from the fixtures, or `undefined` for a 404. */
+const answer = (path: string, query: URLSearchParams): unknown => {
   if (path === '/search') {
     const text = (query.get('query') ?? '').toLowerCase();
     const match = Object.keys(SEARCH_RESULTS).find(key => text.includes(key));
@@ -67,20 +86,7 @@ const answer = (
     return PERSON_CREDITS[path];
   }
 
-  if (path === '/request') {
-    const take = Number.parseInt(query.get('take') ?? '', 10);
-
-    return {
-      pageInfo: { page: 1, pages: 1, results: REQUESTS.length },
-      results: REQUESTS.slice(0, Number.isNaN(take) ? REQUESTS.length : take),
-    };
-  }
-
-  if (SERVER_DETAILS.has(path)) {
-    return { tags };
-  }
-
-  return SERVERS[path] ?? DETAILS[path];
+  return DETAILS[path];
 };
 
 const readJson = async (request: IncomingMessage): Promise<unknown> => {
@@ -93,19 +99,30 @@ const readJson = async (request: IncomingMessage): Promise<unknown> => {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 };
 
+/** The `X-API-User` header as a user id, or `null` when it's missing or not an integer. */
+const readUserId = (request: IncomingMessage): number | null => {
+  const header = request.headers['x-api-user'];
+  const id = typeof header === 'string' ? Number(header) : Number.NaN;
+
+  return Number.isInteger(id) ? id : null;
+};
+
 /**
  * Starts an HTTP server on the given loopback port that answers the Seerr
  * reads the media tools make from fixture JSON, so evals are deterministic
- * and need no network. Requests without `X-Api-Key: apiKey` get a 401, as
- * Seerr answers them.
+ * and need no network. It checks callers as Seerr 3.5.0 does with the admin
+ * key: without `X-Api-Key: apiKey` or an `X-API-User` header it answers 401,
+ * and for an `X-API-User` other than users 2 and 3 it answers the auth
+ * middleware's 403 `{ status, error }`. There's no `/service` route, so any
+ * Radarr or Sonarr tag lookup 404s.
  *
- * `POST /request` records its body in `requests` and answers as Seerr 3.4.1
- * does for an auto-approved request: status 2 (approved) with the tags
- * echoed. `GET /request` lists the fixed `REQUESTS`, honouring `take`; posted
- * requests don't join it. Evals share one stub, so each request eval uses its
- * own tmdbId and filters `requests` by `mediaId`. `withTags` replaces both
- * servers' tag set while `fn` runs, one caller at a time, then restores the
- * default.
+ * `POST /request` records its body in `requests` and answers by user 2's
+ * profile, `auto` unless `withProfile` sets another. `GET /request` lists the
+ * fixed `REQUESTS` made by `requestedBy`, honouring `take`, and answers 400
+ * without `requestedBy`, so evals prove the tools send it. Posted requests
+ * don't join the list. Evals share one stub, so each request eval uses its
+ * own tmdbId and filters `requests` by `mediaId`. `withProfile` sets the
+ * profile while `fn` runs, one caller at a time, then restores `auto`.
  */
 export const startSeerrStub = async ({
   apiKey,
@@ -116,27 +133,27 @@ export const startSeerrStub = async ({
 }): Promise<{
   readonly close: () => Promise<void>;
   readonly requests: readonly RecordedRequest[];
-  readonly withTags: <T>(
-    tags: readonly StubTag[],
+  readonly withProfile: <T>(
+    profile: StubProfile,
     fn: () => Promise<T>,
   ) => Promise<T>;
 }> => {
   const requests: RecordedRequest[] = [];
-  let tags = DEFAULT_TAGS;
+  let profile: StubProfile = 'auto';
   let queue: Promise<unknown> = Promise.resolve();
   let nextRequestId = 1;
 
-  const withTags = <T>(
-    replacement: readonly StubTag[],
+  const withProfile = <T>(
+    replacement: StubProfile,
     fn: () => Promise<T>,
   ): Promise<T> => {
     const run = queue.then(async () => {
-      tags = replacement;
+      profile = replacement;
 
       try {
         return await fn();
       } finally {
-        tags = DEFAULT_TAGS;
+        profile = 'auto';
       }
     });
 
@@ -159,24 +176,52 @@ export const startSeerrStub = async ({
       return;
     }
 
+    const userId = readUserId(request);
+
+    if (userId === null) {
+      send(401, { message: 'X-API-User is required' });
+      return;
+    }
+
+    if (!KNOWN_USERS.has(userId)) {
+      send(403, NO_USER);
+      return;
+    }
+
     if (request.method === 'POST' && path === '/request') {
       const body = (await readJson(request)) as RecordedRequest;
+      const current = userId === REQUESTER_ID ? profile : 'auto';
+
+      if (current === 'refused') {
+        send(403, REFUSED);
+        return;
+      }
 
       requests.push(body);
       send(201, {
         id: nextRequestId++,
         media: { mediaType: body.mediaType, status: 2, tmdbId: body.mediaId },
-        status: 2,
-        tags: body.tags,
+        requestedBy: { id: userId },
+        status: STATUS_BY_PROFILE[current],
         type: body.mediaType,
       });
       return;
     }
 
+    if (request.method === 'GET' && path === '/request') {
+      const requestedBy = Number(url.searchParams.get('requestedBy') ?? '');
+
+      if (!Number.isInteger(requestedBy) || requestedBy <= 0) {
+        send(400, { message: 'The stub requires requestedBy' });
+        return;
+      }
+
+      send(200, requestPage(requestedBy, url.searchParams));
+      return;
+    }
+
     const body =
-      request.method === 'GET'
-        ? answer(path, url.searchParams, tags)
-        : undefined;
+      request.method === 'GET' ? answer(path, url.searchParams) : undefined;
 
     if (body === undefined) {
       send(404, { message: `No fixture for ${request.method} ${path}` });
@@ -197,6 +242,6 @@ export const startSeerrStub = async ({
         server.close(error => (error ? reject(error) : resolve()));
       }),
     requests,
-    withTags,
+    withProfile,
   };
 };

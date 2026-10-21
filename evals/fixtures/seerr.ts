@@ -234,41 +234,41 @@ const severance = {
 };
 
 /**
- * `GET /request` rows, newest first. Tag 2 is `eval-tester`, so Dune and
- * Severance are the requester's. Fight Club carries another person's tag, and
- * The Matrix was requested in Seerr's own UI, so it has no tags.
+ * `GET /request` rows, newest first. Seerr user 2 is the eval requester, so
+ * Dune, Severance and The Matrix are theirs, The Matrix made in Seerr's own
+ * UI rather than through the bot. Fight Club is user 3's.
  */
 export const REQUESTS: readonly unknown[] = [
   {
     createdAt: '2026-10-20T09:00:00.000Z',
     id: 4,
     media: { mediaType: 'movie', status: 3, tmdbId: 438_631 },
+    requestedBy: { id: 2 },
     status: 2,
-    tags: [1, 2],
     type: 'movie',
   },
   {
     createdAt: '2026-10-12T09:00:00.000Z',
     id: 3,
     media: { mediaType: 'tv', status: 5, tmdbId: 95_396 },
+    requestedBy: { id: 2 },
     status: 5,
-    tags: [1, 2],
     type: 'tv',
   },
   {
     createdAt: '2026-09-30T09:00:00.000Z',
     id: 2,
     media: { mediaType: 'movie', status: 5, tmdbId: 550 },
+    requestedBy: { id: 3 },
     status: 5,
-    tags: [1, 3],
     type: 'movie',
   },
   {
     createdAt: '2026-09-01T09:00:00.000Z',
     id: 1,
     media: { mediaType: 'movie', status: 3, tmdbId: 603 },
+    requestedBy: { id: 2 },
     status: 2,
-    tags: null,
     type: 'movie',
   },
 ];

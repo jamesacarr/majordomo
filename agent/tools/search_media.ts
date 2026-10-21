@@ -3,12 +3,14 @@ import { z } from 'zod';
 
 import { getClient } from '../lib/media/get-client';
 import { search } from '../lib/media/search';
+import { requireRequester } from '../lib/require-requester';
 
 // Binding only; the behaviour and its tests live under agent/lib/media/.
 export default defineTool({
   description:
     'Search the media server for movies and TV shows by title. Returns up to 8 matches in relevance order, each with its TMDB id, type, year, a short overview, and availability on the server. Use it before answering anything about a specific title.',
-  execute: input => search(getClient(), input),
+  execute: (input, ctx) =>
+    search(getClient(requireRequester(ctx).seerrUserId), input),
   inputSchema: z.object({
     mediaType: z
       .enum(['movie', 'tv'])
