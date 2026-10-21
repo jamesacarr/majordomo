@@ -100,6 +100,7 @@ export const movieDetailsSchema = z.object({
   id: z.number(),
   mediaInfo: mediaInfoSchema.nullish(),
   overview: z.string().nullish(),
+  posterPath: z.string().nullish(),
   releaseDate: z.string().nullish(),
   runtime: z.number().nullish(),
   title: z.string(),
@@ -116,6 +117,7 @@ export const tvDetailsSchema = z.object({
   name: z.string(),
   numberOfSeasons: z.number().nullish(),
   overview: z.string().nullish(),
+  posterPath: z.string().nullish(),
   seasons: z.array(z.object({ seasonNumber: z.number() })).nullish(),
 });
 

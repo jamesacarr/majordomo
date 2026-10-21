@@ -1,7 +1,5 @@
 import { BOLD_TAG } from './constants';
-
-const escapeHtml = (text: string): string =>
-  text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+import { escapeHtml } from './escape-html';
 
 /**
  * Prepares model output for Telegram's HTML parse mode. `<b>` and `</b>` pass

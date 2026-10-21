@@ -18,6 +18,9 @@ export const MAX_CAST = 5;
 /** `pick_media` shows at most this many titles. Telegram lays buttons out two per row, so four take the same two rows as three. */
 export const MAX_PICK_OPTIONS = 4;
 
+/** TMDB's image CDN at 342 pixels wide; a Seerr `posterPath` is appended. Telegram fetches the image itself. */
+export const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w342';
+
 /** The question `pick_media` asks. Fixed, so the model writes no user-facing text. */
 export const PICK_PROMPT = 'Which one do you mean?';
 
