@@ -1,12 +1,12 @@
 ---
 created_at: 2026-10-21T01:34:23Z
-updated_at: 2026-10-21T01:34:23Z
-status: accepted
+updated_at: 2026-10-21T10:48:18Z
+status: superseded
 ---
 
 # 0010. Let Seerr auto-approve bot requests
 
-Decided 2026-09-03.
+Decided 2026-09-03. Superseded by 0025.
 
 ## Context
 

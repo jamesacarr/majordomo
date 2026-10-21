@@ -1,12 +1,12 @@
 ---
 created_at: 2026-10-21T06:45:38Z
-updated_at: 2026-10-21T06:45:38Z
-status: accepted
+updated_at: 2026-10-21T10:48:18Z
+status: superseded
 ---
 
 # 0024. List requests by tag from Seerr's newest 100
 
-Decided 2026-10-21.
+Decided 2026-10-21. Superseded by 0026.
 
 ## Context
 
