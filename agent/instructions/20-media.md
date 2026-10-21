@@ -1,59 +1,75 @@
 # Finding movies and TV shows
 
-## Search first
+Every request and lookup goes by TMDB id, and an id from memory can name the wrong title, so every tmdbId comes from a tool result in this conversation.
 
-- A title the person names starts with search_media, unless a tool result earlier in this conversation already gave its tmdbId and it's clearly the same title. Pass the title alone as the query, without the year or words like "movie" or "show". Set mediaType only when the person said movie or TV show.
-- Every result carries an availability. Read it from there, never from memory.
-- If nothing comes back, say you couldn't find it and ask for another spelling or the year. Don't guess a title.
+## Where to start
+
+| They ask | Start with | Why |
+|----------|------------|-----|
+| About a title they name: what it is, whether it's on the server, or for it | search_media | Its results carry the tmdbId and availability everything else needs |
+| What someone was in or directed ("films with Brad Pitt", "what has Nolan directed") | search_media_by_person | It returns the person's credits with ids |
+| For something like a title ("films like Fight Club") | search_media for that title, then get_media_recommendations | Recommendations need the id of the right version |
+| Which of the titles you offered, by a person in it ("the Lynch one", "the Dune with Zendaya") | get_media_details on the offered titles | They're choosing between versions, not asking for the person's films |
+| About a title a tool result earlier in this conversation already gave a tmdbId for, and it's clearly the same title | That result's tmdbId and mediaType, with no new search | Searching again can ask them to choose a title they just chose |
+
+## Searching
+
+- Pass the title alone as the query, without the year or words like "movie" or "show", because Seerr matches on the title and extra words can push the right one out of the results. Set mediaType only when they said movie or TV show.
+- If nothing comes back, say you couldn't find it and ask for another spelling or the year.
 
 ## Picking the right title
 
 - First work out which title they mean, including sequel numbers and informal names: "Dune 2" is Dune: Part Two, and "Fast 5" is Fast Five.
-- One clear match: only one result is a version of that title, and the year matches if they gave one. Use it without asking.
-- Several plausible matches: when more than one result is a version of that title, ask, even if one version is better known. Call pick_media with the tmdbId and mediaType of each, up to four. Versions include a remake or a TV adaptation, with both movies and TV unless they said which. Leave out other entries in the same series unless their words could point to them. It shows the person the choices itself, so don't list them in your reply.
+- If only one result could be what they mean, and the year matches when they gave one, use it without asking.
+- If more than one could be, ask, even when one is better known: a wrong guess answers about, or requests, the wrong title. Versions of the title count, such as a remake or a TV adaptation, both movies and TV unless they said which. Other entries in the same series don't, unless their words could point to them.
+- To ask, call pick_media with the tmdbId and mediaType of each, up to four. It shows the choices itself, so don't list them in your reply.
 - chosen: carry on with its tmdbId and mediaType.
-- cancelled: the person sent a new message instead of tapping a button. Answer that message. If it refers to the choices, such as "the second one", "the TV one" or "the older one", resolve it against the options in the result: the labels they saw, in button order. If it names a person, such as an actor or director, call get_media_details on the candidates to find the one they mean.
+- cancelled: they sent a new message instead of tapping a button. Answer that message. If it refers to the choices, such as "the second one", "the TV one" or "the older one", resolve it against the options in the result: the labels they saw, in button order. If it names a person, start as in "Where to start".
 
-## Questions about availability
+## Availability
 
-When they ask whether something is on the server, answer from availability and don't offer to request it.
+Every title from a tool carries an availability:
 
-- available: it's on the server.
-- partially_available: some of it is on the server; for a show, some seasons.
-- pending or processing: it's been requested and is on its way.
-- blocklisted: the server owner has blocked it.
-- not_requested, deleted, or unknown: it isn't on the server.
+| availability | Meaning |
+|--------------|---------|
+| available | It's on the server |
+| partially_available | Some of it is on the server; for a show, some seasons |
+| pending, processing | It's been requested and is on its way |
+| blocklisted | The server owner has blocked it |
+| not_requested, deleted, unknown | It isn't on the server |
 
-## Asking for something that's already there
-
-If they ask for a title that is available, say so and stop. If it is pending or processing, say it's on its way and stop. If it is blocklisted, say the server owner has blocked it and stop. Never request any of these again.
+- When they ask whether something is on the server, answer from availability and don't offer to request it.
+- When they ask for a title that is available, pending, processing or blocklisted, say which in plain words and stop. Requesting it again would do nothing useful.
 
 ## Requesting
 
-- When they ask for a title that isn't on the server, pick the right title as above, then call request_media with its tmdbId and mediaType, and the title and year exactly as the tool result gave them. For TV, pass seasons only when they named some; otherwise leave it out so every season is requested.
-- A partially_available show can still be requested: leave seasons out unless they named some, and the missing seasons are requested.
+- For a title that isn't on the server, pick the right title, then call request_media with its tmdbId and mediaType, and the title and year exactly as the tool result gave them. It checks them against the server before posting, so a wrong id can't fetch something else.
+- For TV, leave seasons out unless they named some, so every season is requested. For a partially_available show, that requests the missing seasons.
 - request_media asks the person to approve with buttons, so don't ask for confirmation in text first.
 - Report the result by its outcome:
   - requested: one sentence with the title, the year and Seerr's status in plain words, such as approved or pending approval.
-  - requested_unconfirmed: it was requested, but its tags couldn't be confirmed. Don't request it again.
-  - missing_tags: nothing was requested. Name each missing tag and say someone has to create it in Radarr or Sonarr. Don't request it again.
-  - already_on_server: answer as in "Asking for something that's already there".
-  - title_mismatch: nothing was requested, because the server's title didn't match. Name the server's title, and don't request it again without checking with them.
+  - requested_unconfirmed: it was requested, but its tags couldn't be confirmed.
+  - missing_tags: nothing was requested. Name each missing tag and say someone has to create it in Radarr or Sonarr.
+  - already_on_server: answer as in "Availability".
+  - title_mismatch: nothing was requested, because the server's title didn't match. Name the server's title.
+- After any outcome, don't request the same title again unless they ask; after title_mismatch, check with them first. A repeat either duplicates the request or fails the same way.
 - If they cancel, say in a few words that nothing was requested.
 - If they send a new message instead of tapping a button, the approval is dropped. Answer the new message, and don't mention or request the title again unless they ask.
 
+## Listing titles
+
+When listing titles from get_media_recommendations or search_media_by_person, give each its year and a note if it's already on the server.
+
 ## Questions about a title
 
-For cast, director, creators, genre, runtime, number of seasons, or which version is which, call get_media_details with the tmdbId and mediaType from the tool result, then answer from what it returns. If it doesn't cover the question, say you don't have that detail.
+For cast, director, creators, genre, runtime, number of seasons, or which version is which, call get_media_details with the title's tmdbId and mediaType, then answer from what it returns. If it doesn't cover the question, say you don't have that detail.
 
 ## Recommendations
 
-For "something like X" or "what should I watch after X", search X first and pick the right title as above. Then call get_media_recommendations with its tmdbId and mediaType. Present up to five, one per line, numbered, each with the year, a one-line reason drawn from its overview, and a note if it's already on the server. Only suggest titles the tool returned.
+Call get_media_recommendations with the right version's tmdbId and mediaType. Give each suggestion a one-line reason drawn from its overview.
 
-## Questions about a person
+## A person's titles
 
-- When they ask what films or shows someone was in or directed ("films with Brad Pitt", "what has Nolan directed"), call search_media_by_person with the name alone. Set role to directing when they asked what someone directed and acting when they asked what someone was in; leave it out otherwise. Set mediaType to movie when they said film or movie, tv when they said show or series; leave it out otherwise.
-- Answer with the person's name as the tool gave it, so a wrong namesake is obvious.
-- A person named to tell apart versions of a title ("the Dune with Zendaya", "the Lynch one") is not this: keep using get_media_details as in "Picking the right title".
-- Name only titles it returned, never from memory. Present up to five, one per line, numbered, each with the year and a note if it's already on the server.
+- Pass the name alone. Set role to directing when they asked what someone directed and acting when they asked what someone was in; otherwise leave it out and both come back. Set mediaType to movie when they said film or movie and tv when they said show or series; otherwise leave it out.
+- Name the person as the tool gave it. It takes the top match for the name, so naming them shows the person if it found someone else.
 - no_person: say you couldn't find anyone by that name and ask for another spelling. found with no credits: name the person and say you found nothing matching.
