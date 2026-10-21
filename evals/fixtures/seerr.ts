@@ -109,8 +109,45 @@ const furiosa = movie(
   'Young Furiosa is taken from the Green Place and fights to find her way home.',
 );
 
+// Not-requested films, one per request eval, so each eval can find its own
+// POST by `mediaId` while evals run concurrently.
+const arrival = movie(
+  329_865,
+  'Arrival',
+  '2016-11-10',
+  'A linguist works with the military to communicate with alien lifeforms after twelve spacecraft land.',
+  { voteAverage: 7.6 },
+);
+
+const heat = movie(
+  949,
+  'Heat',
+  '1995-12-15',
+  'A career thief and the detective obsessed with catching him circle each other in Los Angeles.',
+  { voteAverage: 7.9 },
+);
+
+const bladeRunner = movie(
+  78,
+  'Blade Runner',
+  '1982-06-25',
+  'A blade runner must pursue and terminate four replicants who have returned to Earth.',
+  { voteAverage: 7.9 },
+);
+
+const alien = movie(
+  348,
+  'Alien',
+  '1979-05-25',
+  'The crew of a commercial spacecraft meets a deadly lifeform after investigating a distress call.',
+  { voteAverage: 8.2 },
+);
+
 /** Search results by a word the query must contain, lower case. */
 export const SEARCH_RESULTS: Readonly<Record<string, readonly unknown[]>> = {
+  alien: [alien],
+  arrival: [arrival],
+  'blade runner': [bladeRunner],
   dune: [
     dune2021,
     dune1984,
@@ -124,11 +161,15 @@ export const SEARCH_RESULTS: Readonly<Record<string, readonly unknown[]>> = {
     },
   ],
   'fight club': [fightClub],
+  heat: [heat],
   'mad max': [madMax, furyRoad, madMaxTwo, furiosa, thunderdome],
 };
 
 /** `/movie/{id}` and `/tv/{id}` answers, by path. */
 export const DETAILS: Readonly<Record<string, unknown>> = {
+  '/movie/78': bladeRunner,
+  '/movie/348': alien,
+  '/movie/550': fightClub,
   '/movie/841': {
     ...dune1984,
     credits: {
@@ -158,6 +199,7 @@ export const DETAILS: Readonly<Record<string, unknown>> = {
     genres: [{ id: 878, name: 'Science Fiction' }],
     runtime: 137,
   },
+  '/movie/949': heat,
   '/movie/76341': {
     ...furyRoad,
     credits: {
@@ -191,6 +233,7 @@ export const DETAILS: Readonly<Record<string, unknown>> = {
     ],
     runtime: 121,
   },
+  '/movie/329865': arrival,
   '/movie/438631': {
     ...dune2021,
     credits: {

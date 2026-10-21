@@ -1,4 +1,4 @@
-import type { Availability } from './types';
+import type { Availability, RequestStatus } from './types';
 
 /** Radarr/Sonarr tag label applied to every request majordomo submits, beside the requester's own tag. */
 export const SEERR_TAG = 'seerr';
@@ -15,6 +15,15 @@ export const AVAILABILITY_BY_STATUS: Readonly<Record<number, Availability>> = {
   5: 'available',
   6: 'blocklisted',
   7: 'deleted',
+};
+
+/** Seerr's `MediaRequestStatus` codes in 3.4.1 (`server/constants/media.ts`). */
+export const REQUEST_STATUS_BY_CODE: Readonly<Record<number, RequestStatus>> = {
+  1: 'pending_approval',
+  2: 'approved',
+  3: 'declined',
+  4: 'failed',
+  5: 'completed',
 };
 
 /** `search_media` and recommendations truncate overviews to this many characters. */

@@ -1,3 +1,5 @@
+import type { Availability } from '../seerr/types';
+
 /** The env var holding the Seerr instance root, without `/api/v1`. */
 export const SEERR_URL_ENV = 'SEERR_URL';
 
@@ -18,3 +20,15 @@ export const MAX_PICK_OPTIONS = 4;
 
 /** The question `pick_media` asks. Fixed, so the model writes no user-facing text. */
 export const PICK_PROMPT = 'Which one do you mean?';
+
+/**
+ * `request_media` posts nothing for a title in one of these states: it's on
+ * the server, on its way, or blocked. A partly available show can still gain
+ * seasons, and a deleted or unknown title can be requested again.
+ */
+export const NOT_REQUESTABLE: ReadonlySet<Availability> = new Set([
+  'available',
+  'blocklisted',
+  'pending',
+  'processing',
+]);

@@ -33,6 +33,15 @@ export type Availability =
   | 'deleted'
   | 'not_requested';
 
+/** Seerr's `MediaRequestStatus` enum (`server/constants/media.ts`), by name. */
+export type RequestStatus =
+  | 'pending_approval'
+  | 'approved'
+  | 'declined'
+  | 'failed'
+  | 'completed'
+  | 'unknown';
+
 export type MediaInfo = z.output<typeof mediaInfoSchema>;
 export type MovieResult = z.output<typeof movieResultSchema>;
 export type TvResult = z.output<typeof tvResultSchema>;

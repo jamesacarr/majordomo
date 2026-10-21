@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ApiError } from './api-error';
 import { createClient } from './create-client';
+import { ResponseShapeError } from './response-shape-error';
 import type { Client } from './types';
 
 // Answers shaped like Seerr 3.4.1's, including fields the schemas don't read.
@@ -349,6 +350,17 @@ describe('createClient', () => {
       expect(lines).toContain(`  → at ${field}`);
     },
   );
+
+  it('throws a ResponseShapeError carrying the zod issues for a shape mismatch', async () => {
+    const error = await clientWith(answering({ ...createdRequest, tags: null }))
+      .createRequest({ mediaId: 603, mediaType: 'movie', tags: [1] })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ResponseShapeError);
+    expect((error as ResponseShapeError).issues.map(i => i.path)).toEqual([
+      ['tags'],
+    ]);
+  });
 
   it('listRequests sends the given params as the query string', async () => {
     const { fetch, sent } = recordingFetch();
