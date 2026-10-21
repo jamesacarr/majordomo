@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { MovieDetails, TvDetails } from '../seerr/types';
+import { POSTER_FETCH_TIMEOUT_MS } from './constants';
 import { fetchCards } from './fetch-cards';
 
 const movie = (id: number): MovieDetails => ({
@@ -40,7 +41,7 @@ describe('fetchCards', () => {
           { mediaType: 'tv', tmdbId: 7 },
           { mediaType: 'movie', tmdbId: 1 },
         ],
-        3000,
+        POSTER_FETCH_TIMEOUT_MS,
       ),
     ).resolves.toEqual([
       { overview: 'Show 7.', posterUrl: null, title: 'Show 7', year: 2000 },
@@ -60,7 +61,7 @@ describe('fetchCards', () => {
         { mediaType: 'movie', tmdbId: 404 },
         { mediaType: 'movie', tmdbId: 1 },
       ],
-      3000,
+      POSTER_FETCH_TIMEOUT_MS,
     );
 
     expect(cards[0]).toBeUndefined();
@@ -83,9 +84,9 @@ describe('fetchCards', () => {
         { mediaType: 'movie', tmdbId: 1 },
         { mediaType: 'movie', tmdbId: 2 },
       ],
-      3000,
+      POSTER_FETCH_TIMEOUT_MS,
     );
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(POSTER_FETCH_TIMEOUT_MS);
     const cards = await pending;
 
     expect(cards[0]).toMatchObject({ title: 'Movie 1' });
@@ -99,7 +100,7 @@ describe('fetchCards', () => {
           throw new Error('SEERR_URL is not set');
         },
         [{ mediaType: 'movie', tmdbId: 1 }],
-        3000,
+        POSTER_FETCH_TIMEOUT_MS,
       ),
     ).resolves.toEqual([undefined]);
   });

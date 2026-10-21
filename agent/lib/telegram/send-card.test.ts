@@ -10,14 +10,14 @@ const handle = ({
   messageThreadId,
   ok = true,
   post = vi.fn<Post>(async () => ({ id: '2', raw: null })),
-  request = vi.fn<Request>(async () => ({
-    body: {},
-    ok,
-    status: ok ? 200 : 400,
-  })),
+  status = ok ? 200 : 400,
+  body = {},
+  request = vi.fn<Request>(async () => ({ body, ok, status })),
 }: {
+  readonly body?: unknown;
   readonly messageThreadId?: number;
   readonly ok?: boolean;
+  readonly status?: number;
   readonly post?: ReturnType<typeof vi.fn<Post>>;
   readonly request?: ReturnType<typeof vi.fn<Request>>;
 } = {}) => ({
@@ -34,8 +34,9 @@ describe('sendCard', () => {
   it('sends the poster captioned with the card as HTML', async () => {
     const telegram = handle();
 
-    await sendCard(telegram, HTML, POSTER);
-
+    await expect(sendCard(telegram, HTML, POSTER)).resolves.toEqual({
+      status: 'sent',
+    });
     expect(telegram.request).toHaveBeenCalledExactlyOnceWith('sendPhoto', {
       caption: HTML,
       chat_id: '42',
@@ -98,6 +99,44 @@ describe('sendCard', () => {
         ),
     });
 
-    await expect(sendCard(telegram, HTML, null)).resolves.toBeUndefined();
+    await expect(sendCard(telegram, HTML, null)).resolves.toEqual({
+      status: 'sent',
+    });
+  });
+
+  it('reports a throttled photo with Telegram’s wait and sends no fallback', async () => {
+    const telegram = handle({
+      body: {
+        description: 'Too Many Requests: retry after 4',
+        error_code: 429,
+        ok: false,
+        parameters: { retry_after: 4 },
+      },
+      ok: false,
+      status: 429,
+    });
+
+    await expect(sendCard(telegram, HTML, POSTER)).resolves.toEqual({
+      retryAfterMs: 4000,
+      status: 'throttled',
+    });
+    expect(telegram.post).not.toHaveBeenCalled();
+  });
+
+  it('reports a throttled text card with the wait from eve’s error', async () => {
+    const telegram = handle({
+      post: vi
+        .fn<Post>()
+        .mockRejectedValue(
+          new Error(
+            'Telegram sendMessage failed with HTTP 429: Too Many Requests: retry after 2',
+          ),
+        ),
+    });
+
+    await expect(sendCard(telegram, HTML, null)).resolves.toEqual({
+      retryAfterMs: 2000,
+      status: 'throttled',
+    });
   });
 });

@@ -14,6 +14,11 @@ export type TelegramApiBody = NonNullable<
   Parameters<TelegramHandle['request']>[1]
 >;
 
+/** What `sendCard` reports: sent (or skipped after a failure), or throttled by Telegram for `retryAfterMs`. */
+export type CardOutcome =
+  | { readonly status: 'sent' }
+  | { readonly retryAfterMs: number; readonly status: 'throttled' };
+
 /** `TelegramMessageBody` omits `parse_mode`, but eve spreads the body straight into `sendMessage`. */
 export type HtmlMessageBody = TelegramMessageBody & {
   readonly parse_mode: 'HTML';
