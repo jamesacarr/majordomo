@@ -39,8 +39,8 @@ To learn more about eve, explore these resources:
 The agent runs on Vercel and deploys from `main`. A first deploy follows these steps, each covered in [docs/runbook.md](docs/runbook.md):
 
 1. [Create a development bot](docs/runbook.md#development-bot) for `pnpm dev`.
-2. [Generate a Seerr API key](docs/runbook.md#seerr).
-3. [Create the Radarr and Sonarr tags](docs/runbook.md#radarr-and-sonarr-tags).
+2. [Generate the Seerr API key](docs/runbook.md#seerr).
+3. [Set up each person's Seerr user](docs/runbook.md#seerr-users).
 4. [Set the Vercel environment variables](docs/runbook.md#vercel-environment-variables).
 5. [Set the AI Gateway spend cap](docs/runbook.md#ai-gateway-spend-cap).
 6. [Link and deploy](docs/runbook.md#link-and-deploy).

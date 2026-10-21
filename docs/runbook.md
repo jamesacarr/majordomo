@@ -1,6 +1,6 @@
 ---
 created_at: 2026-10-21T06:22:13Z
-updated_at: 2026-10-21T06:22:13Z
+updated_at: 2026-10-21T11:37:13Z
 ---
 
 # Runbook
@@ -14,20 +14,20 @@ Setup, go-live and recurring chores for majordomo. Work through the sections in 
 | The agent | Vercel project `majordomo` in team `james-carrs-projects-e57e5dc3`, served at `https://majordomo.jamescarr.dev` |
 | Telegram | Production bot with its webhook on the Vercel deployment, plus a separate development bot (0014) |
 | Seerr | Home server, reachable over https through a Cloudflare Tunnel managed outside this repo |
-| Radarr and Sonarr | Behind Seerr. The bot never calls them directly |
+| Seerr users | One per household member. The bot acts as each person's Seerr user, so their Seerr permissions, approval rules and quota apply ([0025](decisions/0025-act-as-each-persons-seerr-user.md)) |
 | Models | Vercel AI Gateway. Production authenticates with Vercel OIDC, development with `AI_GATEWAY_API_KEY` |
 
 `.vercel/` is gitignored, so a fresh checkout isn't linked to the project. Every `vercel` command below passes `--scope james-carrs-projects-e57e5dc3`, and every `eve link` or `eve deploy` passes `--project majordomo --team james-carrs-projects-e57e5dc3`.
 
-The design is in [architecture.md](architecture.md). The decisions this runbook relies on are [0001](decisions/0001-deploy-to-vercel-from-main.md) (deploys), [0003](decisions/0003-allowlist-private-chats.md) (allowlist), [0004](decisions/0004-tag-requests-with-seerr-and-requester.md) (tags), [0014](decisions/0014-separate-development-bot.md) (development bot) and [0016](decisions/0016-bound-cost-per-session.md) (cost).
+The design is in [architecture.md](architecture.md). The decisions this runbook relies on are [0001](decisions/0001-deploy-to-vercel-from-main.md) (deploys), [0025](decisions/0025-act-as-each-persons-seerr-user.md) (allowlist and Seerr users), [0014](decisions/0014-separate-development-bot.md) (development bot) and [0016](decisions/0016-bound-cost-per-session.md) (cost).
 
 ## Development bot
 
 Telegram allows one webhook or poller per token, so `eve dev` and manual testing use their own bot.
 
 1. In Telegram, message [@BotFather](https://t.me/BotFather) and send `/newbot`. Give it a name that marks it as the development bot.
-2. Send `/setjoingroups`, pick the bot, then **Disable**. The bot drops group messages anyway (0003). Disabling joins stops anyone adding it to a group at all.
-3. Copy `.env.example` to `.env` and set `TELEGRAM_BOT_TOKEN` to the new token.
+2. Send `/setjoingroups`, pick the bot, then **Disable**. The bot drops group messages anyway (0025). Disabling joins stops anyone adding it to a group at all.
+3. Copy `.env.example` to `.env` and set `TELEGRAM_BOT_TOKEN` to the new token. Set `MAJORDOMO_DEV_SEERR_USER_ID` to the Seerr user id that `eve dev` TUI sessions and evals act as ([Seerr users](#seerr-users)).
 
 `eve dev` listens on port 2000 by default (`--port` changes it). eve doesn't provide a tunnel, so testing the development bot on Telegram needs a public https URL of your choice in front of that port. Register it with the same `setWebhook` call as [Go-live](#go-live), using the development token and the tunnel URL.
 
@@ -37,43 +37,37 @@ Seerr is already reachable over https through the Cloudflare Tunnel. Nothing in 
 
 1. In Seerr, open **Settings > General** and copy the **API Key**. This is `SEERR_API_KEY`. The key is the only barrier in front of request creation ([0011](decisions/0011-protect-seerr-with-api-key-only.md)), so treat it as a secret.
 2. Set `SEERR_URL` to the tunnel's https origin, with no path.
-3. From outside the home network, check the key and list the servers the bot routes to:
+3. After setting up [Seerr users](#seerr-users), check the key, the tunnel and a user id from outside the home network. This sends the same two headers as the bot:
 
 ```bash
-curl -fsS -H "X-Api-Key: $SEERR_API_KEY" "$SEERR_URL/api/v1/service/radarr"
-curl -fsS -H "X-Api-Key: $SEERR_API_KEY" "$SEERR_URL/api/v1/service/sonarr"
+curl -fsS -G "$SEERR_URL/api/v1/search" --data-urlencode "query=dune" \
+  -H "X-Api-Key: $SEERR_API_KEY" -H "X-API-User: <seerr-user-id>"
 ```
 
-Each must return a JSON array containing exactly one server with `"isDefault": true` and `"is4k": false`. That's the server the bot tags requests on ([0009](decisions/0009-route-to-default-non-4k-server.md)). Note its `id` for the next section.
+A JSON body with `results` means all three work. A 403 means Seerr has no user with that id. A 401 means the API key is wrong.
 
-## Radarr and Sonarr tags
+## Seerr users
 
-Every request carries two tags: `seerr`, and the requester's tag ([0004](decisions/0004-tag-requests-with-seerr-and-requester.md)). Seerr has no API to create tags, so create them by hand on the default non-4K Radarr server and the default non-4K Sonarr server from [Seerr](#seerr).
+The bot sends the admin API key with an `X-API-User` header naming the person's Seerr user, so Seerr acts as that user (0025). Each allowlisted person needs their own Seerr account. Their permissions, auto-approval and quota decide what happens to a request:
 
-The requester's tag comes from their display name in `MAJORDOMO_ALLOWED_USERS` (`agent/lib/to-tag.ts`):
+| Seerr settings for the user | What happens to a request |
+|-----------------------------|---------------------------|
+| **Auto-Approve** (or the movie or series variant), or **Manage Requests** | Created approved, and the bot reports it as requested |
+| **Request** without auto-approval | Created pending, and the bot says it's waiting for approval |
+| No permission for that media type, a used-up quota or a blocklisted title | Refused with Seerr's own message, and nothing is created |
 
-1. Accents are dropped and letters lowercased.
-2. Each run of other characters becomes one hyphen.
-3. Leading and trailing hyphens are trimmed.
-
-`Mary Jane` becomes `mary-jane`, and `Zoë O'Brien` becomes `zoe-o-brien`. Radarr and Sonarr only accept labels of letters, digits and hyphens, and every tag this rule produces fits.
-
-In both Radarr and Sonarr, open **Settings > Tags** and add `seerr`, then one tag per allowlisted name. To use their APIs instead, run this against each app, using its own URL and API key (**Settings > General**):
+1. Make sure each person has a Seerr account. Seerr creates one when they first sign in with their media server login, or you can create one under **Users**.
+2. Set their permissions and quota under **Users**, then the person's **Edit Settings**.
+3. Find each person's Seerr user id. It's the number in the URL of their page under **Users** (`/users/<id>`), or run:
 
 ```bash
-curl -fsS -X POST "$ARR_URL/api/v3/tag" \
-  -H "X-Api-Key: $ARR_API_KEY" -H "Content-Type: application/json" \
-  -d '{"label":"seerr"}'
+curl -fsS -G "$SEERR_URL/api/v1/user" --data-urlencode "take=100" \
+  -H "X-Api-Key: $SEERR_API_KEY" | jq '.results[] | {id, displayName, email}'
 ```
 
-Confirm Seerr sees them, using the server `id` from [Seerr](#seerr):
+A wrong id doesn't fail when a message arrives. The first tool call fails with an error naming the id, for example `Seerr has no user with id 42 (X-API-User).`
 
-```bash
-curl -fsS -H "X-Api-Key: $SEERR_API_KEY" "$SEERR_URL/api/v1/service/radarr/<id>"
-curl -fsS -H "X-Api-Key: $SEERR_API_KEY" "$SEERR_URL/api/v1/service/sonarr/<id>"
-```
-
-The `tags` array in each response must include every label. A missing tag doesn't break anything silently. `request_media` refuses and names the missing tag ([0005](decisions/0005-fail-closed-on-missing-tag.md)).
+The bot no longer uses Radarr or Sonarr tags. Seerr's own **Tag Requests** setting can still add them, and nothing in the bot reads them.
 
 ## Vercel environment variables
 
@@ -85,9 +79,9 @@ These match [.env.example](../.env.example). Set each one on both **Production**
 | `TELEGRAM_WEBHOOK_SECRET_TOKEN` | A random string. Generate it with `openssl rand -hex 32`, which fits Telegram's allowed characters (`A-Z`, `a-z`, `0-9`, `_`, `-`, up to 256) |
 | `SEERR_URL` | From [Seerr](#seerr) |
 | `SEERR_API_KEY` | From [Seerr](#seerr) |
-| `MAJORDOMO_ALLOWED_USERS` | JSON map of Telegram user id to display name, for example `{"123456789":"Alice"}` |
+| `MAJORDOMO_ALLOWED_USERS` | JSON map of Telegram user id to Seerr user id, for example `{"123456789":2}`. The Seerr id is a JSON number, not a string. Two Telegram ids may map to the same Seerr id, for one person with two Telegram accounts |
 
-Two variables in `.env.example` stay out of Vercel. `MAJORDOMO_DEV_USER` is ignored unless `EVE_DEV=1`, which only `eve dev` sets. `AI_GATEWAY_API_KEY` is for local use; production authenticates with OIDC.
+Two variables in `.env.example` stay out of Vercel. `MAJORDOMO_DEV_SEERR_USER_ID` is ignored unless `EVE_DEV=1`, which only `eve dev` sets. `AI_GATEWAY_API_KEY` is for local use; production authenticates with OIDC.
 
 Add each variable as a secret and enter the value at the prompt, which keeps it out of shell history:
 
@@ -183,10 +177,10 @@ To roll back, call `setWebhook` with the old service's URL and secret, then rest
 ## Adding a user
 
 1. Get the person's numeric Telegram user id. A third-party bot such as [@userinfobot](https://t.me/userinfobot) replies with it.
-2. Create their tag in both Radarr and Sonarr first ([Radarr and Sonarr tags](#radarr-and-sonarr-tags)). Until the tag exists, their requests are refused.
-3. Add `"<id>":"<Name>"` to `MAJORDOMO_ALLOWED_USERS` on Production and Preview with `vercel env add ... --force` ([Vercel environment variables](#vercel-environment-variables)). Two names that slugify to the same tag are rejected (0004).
+2. Set up their Seerr account, permissions and quota, and note their Seerr user id ([Seerr users](#seerr-users)).
+3. Add `"<telegram-id>":<seerr-id>` to `MAJORDOMO_ALLOWED_USERS` on Production and Preview with `vercel env add ... --force` ([Vercel environment variables](#vercel-environment-variables)). The bot parses the allowlist on every private message and throws on invalid JSON or a bad entry, so one typo stops the bot answering anyone. Check the JSON before saving.
 4. [Redeploy](#redeploy). A cold start of the existing deployment still reads the old value.
-5. Ask them to send the bot a message.
+5. Ask them to send the bot a message. The bot addresses them by their Telegram first name.
 
 ## Rotating credentials
 
@@ -198,7 +192,7 @@ To roll back, call `setWebhook` with the old service's URL and secret, then rest
 
 ## Smoke-test checklist
 
-Run after go-live and after any change to the channel, allowlist or Seerr setup. Untick every item before a new run.
+Run after go-live and after any change to the channel, allowlist or Seerr users. Untick every item before a new run.
 
 Last passed (UTC): not yet run
 
@@ -206,6 +200,9 @@ Last passed (UTC): not yet run
 - [ ] `getWebhookInfo` shows `https://majordomo.jamescarr.dev/eve/v1/telegram`, `allowed_updates` of `message` and `callback_query`, and no `last_error_message`
 - [ ] A Telegram account not on the allowlist messages the bot, and the bot sends nothing
 - [ ] A message in a group containing the bot, including one that mentions it, gets no reply. To add the bot, enable `/setjoingroups` in BotFather, then remove the bot from the group and set it back to **Disable**
-- [ ] An allowlisted user searches for a title with several matches, picks one and taps **Approve**. The request appears in Seerr, and in Radarr or Sonarr with both the `seerr` tag and their own tag
+- [ ] An allowlisted user searches for a title with several matches. Each candidate arrives as a numbered card, with a poster where TMDB has one, before the keyboard
+- [ ] They pick one and tap **Approve** on the confirmation card. The request appears in Seerr with them as the requester, approved or pending according to their Seerr permissions
+- [ ] They ask "what have I requested?" and the list shows that request and none of anyone else's
+- [ ] An actor or director search ("films with Tilda Swinton") returns titles from that person's credits
 - [ ] `vercel ai-gateway budgets list --scope james-carrs-projects-e57e5dc3` shows the team budget at US$5 monthly
 - [ ] The previous implementation's service is stopped
