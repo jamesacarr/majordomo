@@ -1,6 +1,6 @@
 ---
 created_at: 2026-10-21T01:34:23Z
-updated_at: 2026-10-21T10:48:18Z
+updated_at: 2026-10-21T11:35:50Z
 ---
 
 # Architecture
@@ -13,7 +13,7 @@ majordomo is a household agent built on eve and deployed to Vercel. Allowlisted 
 
 1. Telegram posts an update to `POST /eve/v1/telegram`, and eve verifies the secret token header.
 2. `onMessage` (`agent/lib/telegram/create-on-message.ts`) drops the update unless the chat is private and the sender is on the allowlist. Otherwise it returns session auth carrying the person's Seerr user id from the allowlist, plus a `requester_name` context line with their Telegram first name so the model can address them. Every tool reads the id back with `requireRequester`, and the Seerr client sends it as `X-API-User` on every call, so Seerr acts as that person (decision 0025).
-3. The model runs with the media instructions and tools. `search_media` returns up to eight candidates with TMDB ids and library availability. For a question about an actor or director, `search_media_by_person` returns that person's acting and directing credits as the same candidates (decision 0024).
+3. The model runs with the media instructions and tools. `search_media` returns up to eight candidates with TMDB ids and library availability. For a question about an actor or director, `search_media_by_person` returns that person's acting and directing credits as the same candidates (decision 0027).
 4. When several titles match, the model asks the user to pick one with `pick_media`, which returns an exact TMDB id. Before the buttons, the Telegram channel sends a card per title with its poster, numbered label and summary (`agent/lib/telegram/create-on-input-requested.ts`, decision 0023).
 5. The model calls `request_media` with that id. eve pauses for approval, and Telegram shows the title's poster card, then approve and cancel buttons.
 6. On approval, `request_media` posts the request to Seerr as the person's Seerr user. Seerr approves it or leaves it waiting for approval according to that user's permissions, or refuses it for a missing permission, a used-up quota or a blocklisted title.
