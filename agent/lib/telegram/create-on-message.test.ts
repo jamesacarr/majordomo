@@ -94,30 +94,24 @@ describe('createOnMessage', () => {
     );
   });
 
-  it('stamps the Seerr user id from the allowlist', async () => {
+  it("stamps the sender's own Seerr id from the allowlist alongside their Telegram username", async () => {
     const { ctx } = context();
-
-    const result = await createOnMessage(env)(ctx, message());
-
-    expect(result?.auth?.attributes).toMatchObject({ seerr_user_id: '7' });
-  });
-
-  it('keeps the allowlist Seerr id alongside the Telegram username', async () => {
-    const { ctx } = context();
+    const household = { [ALLOWLIST_ENV]: '{"123456789":7,"123456790":9}' };
     const named = message({
+      chat: { id: '123456790', type: 'private' },
       from: {
-        firstName: 'Mary',
-        id: '123456789',
+        firstName: 'Bob',
+        id: '123456790',
         isBot: false,
-        username: 'mary',
+        username: 'bob',
       },
     });
 
-    const result = await createOnMessage(env)(ctx, named);
+    const result = await createOnMessage(household)(ctx, named);
 
     expect(result?.auth?.attributes).toMatchObject({
-      seerr_user_id: '7',
-      username: 'mary',
+      seerr_user_id: '9',
+      username: 'bob',
     });
   });
 
