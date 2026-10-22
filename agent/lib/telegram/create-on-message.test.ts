@@ -1,7 +1,12 @@
-import type { TelegramContext, TelegramMessage } from 'eve/channels/telegram';
+import type {
+  TelegramContext,
+  TelegramInboundResult,
+  TelegramMessage,
+} from 'eve/channels/telegram';
+import { defaultTelegramAuth } from 'eve/channels/telegram';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ALLOWLIST_AUTHENTICATOR, ALLOWLIST_ENV } from '../constants';
+import { ALLOWLIST_ENV } from '../constants';
 import { createOnMessage } from './create-on-message';
 
 const env = { [ALLOWLIST_ENV]: '{"123456789":7}' };
@@ -19,6 +24,19 @@ const message = (
   ...overrides,
 });
 
+type SessionAuth = NonNullable<TelegramInboundResult>['auth'];
+
+/** The fields eve's `sameResponder` compares to decide who may answer an approval. */
+const identity = (auth: SessionAuth | undefined) =>
+  auth
+    ? {
+        authenticator: auth.authenticator,
+        issuer: auth.issuer,
+        principalId: auth.principalId,
+        principalType: auth.principalType,
+      }
+    : null;
+
 const context = () => {
   const startTyping = vi.fn(async () => {});
   const ctx = { telegram: { startTyping } } as unknown as TelegramContext;
@@ -29,10 +47,12 @@ describe('createOnMessage', () => {
   const auth = {
     attributes: {
       chat_id: '123456789',
+      chat_type: 'private',
+      message_id: '42',
       seerr_user_id: '7',
       user_id: '123456789',
     },
-    authenticator: ALLOWLIST_AUTHENTICATOR,
+    authenticator: 'telegram-webhook',
     issuer: 'telegram',
     principalId: 'telegram:123456789',
     principalType: 'user',
@@ -49,6 +69,56 @@ describe('createOnMessage', () => {
       title: 'Mary',
     });
     expect(startTyping).toHaveBeenCalledOnce();
+  });
+
+  // eve checks an approval tap against the requester with these four fields,
+  // building the tapper's identity with `defaultTelegramAuth`. Any mismatch
+  // rejects every approval.
+  it('gives the session the identity eve gives the same person tapping an approval button', async () => {
+    const { ctx } = context();
+    const user = { firstName: 'Mary', id: '123456789', isBot: false };
+    const botPromptMessage = message({
+      from: { firstName: 'Majordomo', id: '999', isBot: true },
+      messageId: '43',
+    });
+
+    const result = await createOnMessage(env)(ctx, message({ from: user }));
+    const session = identity(result?.auth);
+
+    expect(session).not.toBeNull();
+    expect(session).toEqual(
+      identity(defaultTelegramAuth(message({ from: user }))),
+    );
+    expect(session).toEqual(
+      identity(defaultTelegramAuth({ ...botPromptMessage, from: user })),
+    );
+  });
+
+  it('stamps the Seerr user id from the allowlist', async () => {
+    const { ctx } = context();
+
+    const result = await createOnMessage(env)(ctx, message());
+
+    expect(result?.auth?.attributes).toMatchObject({ seerr_user_id: '7' });
+  });
+
+  it('keeps the allowlist Seerr id alongside the Telegram username', async () => {
+    const { ctx } = context();
+    const named = message({
+      from: {
+        firstName: 'Mary',
+        id: '123456789',
+        isBot: false,
+        username: 'mary',
+      },
+    });
+
+    const result = await createOnMessage(env)(ctx, named);
+
+    expect(result?.auth?.attributes).toMatchObject({
+      seerr_user_id: '7',
+      username: 'mary',
+    });
   });
 
   it('trims the Telegram first name', async () => {
