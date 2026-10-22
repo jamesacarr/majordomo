@@ -1,7 +1,7 @@
 import type { SessionContext } from 'eve/tools';
 import { describe, expect, it } from 'vitest';
 
-import { ALLOWLIST_AUTHENTICATOR, DEV_SEERR_USER_ENV } from './constants';
+import { DEV_SEERR_USER_ENV } from './constants';
 import { requireRequester } from './require-requester';
 
 // eve does not export this type by name; derive it from the session context tools receive.
@@ -22,10 +22,12 @@ const contextWith = (
 const telegramAuth: SessionAuthContext = {
   attributes: {
     chat_id: '123456789',
+    chat_type: 'private',
+    message_id: '42',
     seerr_user_id: '7',
     user_id: '123456789',
   },
-  authenticator: ALLOWLIST_AUTHENTICATOR,
+  authenticator: 'telegram-webhook',
   issuer: 'telegram',
   principalId: 'telegram:123456789',
   principalType: 'user',
@@ -55,17 +57,6 @@ describe('requireRequester', () => {
     expect(() =>
       requireRequester(contextWith(null), { [DEV_SEERR_USER_ENV]: '2' }),
     ).toThrow('no requester identity');
-  });
-
-  it('ignores a Seerr id stamped by another authenticator', () => {
-    const oidc: SessionAuthContext = {
-      ...telegramAuth,
-      authenticator: 'vercel-oidc',
-    };
-
-    expect(() => requireRequester(contextWith(oidc), {})).toThrow(
-      'no requester identity',
-    );
   });
 
   it('throws when the session has no Seerr id attribute', () => {

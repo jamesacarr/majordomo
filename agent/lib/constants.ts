@@ -6,6 +6,3 @@ export const ALLOWLIST_ENV = 'MAJORDOMO_ALLOWED_USERS';
  * as. Those sessions carry no Telegram identity; only read when `EVE_DEV=1`.
  */
 export const DEV_SEERR_USER_ENV = 'MAJORDOMO_DEV_SEERR_USER_ID';
-
-/** `authenticator` value stamped on sessions the Telegram allowlist admitted. */
-export const ALLOWLIST_AUTHENTICATOR = 'majordomo-allowlist';

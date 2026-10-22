@@ -3,8 +3,8 @@ import type {
   TelegramInboundResult,
   TelegramMessage,
 } from 'eve/channels/telegram';
+import { defaultTelegramAuth } from 'eve/channels/telegram';
 
-import { ALLOWLIST_AUTHENTICATOR } from '../constants';
 import { lookupUser } from '../lookup-user';
 import type { Env } from '../types';
 
@@ -24,9 +24,15 @@ export const createOnMessage =
       return null;
     }
     const from = message.from;
-    if (from === undefined || from.isBot) {
+    // eve checks an approval tap against the session with its own
+    // `defaultTelegramAuth`, so the session must carry the same identity. It
+    // returns `null` only when the message has no sender.
+    const telegramAuth = defaultTelegramAuth(message);
+
+    if (telegramAuth === null || from === undefined || from.isBot) {
       return null;
     }
+
     // Stickers, voice notes and the like arrive with no text and no supported
     // attachment. eve's default hook drops those too.
     if (
@@ -43,16 +49,12 @@ export const createOnMessage =
     await ctx.telegram.startTyping();
 
     const auth = {
+      ...telegramAuth,
       attributes: {
-        chat_id: message.chat.id,
+        ...telegramAuth.attributes,
         seerr_user_id: String(user.seerrUserId),
-        user_id: from.id,
       },
-      authenticator: ALLOWLIST_AUTHENTICATOR,
-      issuer: 'telegram',
-      principalId: `telegram:${from.id}`,
-      principalType: 'user',
-    } as const;
+    };
     const name = from.firstName?.trim();
 
     if (!name) {

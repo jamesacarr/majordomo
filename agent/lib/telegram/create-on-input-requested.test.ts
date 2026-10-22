@@ -7,7 +7,6 @@ import { renderTelegramInputRequest } from 'eve/channels/telegram';
 import type { SessionContext } from 'eve/tools';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ALLOWLIST_AUTHENTICATOR } from '../constants';
 import { SEERR_API_KEY_ENV, SEERR_URL_ENV } from '../media/constants';
 import type { MovieDetails } from '../seerr/types';
 import { MAX_THROTTLE_WAIT_MS, POSTER_FETCH_TIMEOUT_MS } from './constants';
@@ -75,7 +74,7 @@ const sessionFor = (seerrUserId: string | null): SessionContext =>
             ? null
             : {
                 attributes: { seerr_user_id: seerrUserId },
-                authenticator: ALLOWLIST_AUTHENTICATOR,
+                authenticator: 'telegram-webhook',
                 issuer: 'telegram',
                 principalId: 'telegram:42',
                 principalType: 'user',
