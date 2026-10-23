@@ -33,7 +33,7 @@ Three layers keep the agent to its job, strongest first:
 
 eve treats every file under `agent/tools/`, `agent/channels/`, `agent/instructions/`, `agent/skills/` and `agent/schedules/` as a definition. Files there only bind eve definitions to functions in `agent/lib/`, where the logic and its colocated tests live. Decision 0018 explains why.
 
-Production authenticates to the AI Gateway with Vercel OIDC. Local `eve dev` and `eve eval` use `AI_GATEWAY_API_KEY` from `.env`, and the two paths coexist without a switch.
+Production authenticates to the AI Gateway with Vercel OIDC. Local `eve dev` and `eve eval` use `AI_GATEWAY_API_KEY` from `.env`, and the two paths coexist without a switch. The gateway tries Together AI first, then DeepSeek, then any other provider of the model (decision 0028).
 
 ## Adding a capability
 
