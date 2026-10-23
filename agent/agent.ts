@@ -12,4 +12,11 @@ export default defineAgent({
     sessionTimeoutMs: ONE_DAY_MS,
   },
   model: 'deepseek/deepseek-v4.1-flash-1017',
+  // Try the fastest zero-retention provider, then DeepSeek's own endpoint
+  // (decision 0028). The gateway still falls back to unlisted providers.
+  modelOptions: {
+    providerOptions: {
+      gateway: { order: ['togetherai', 'deepseek'] },
+    },
+  },
 });
