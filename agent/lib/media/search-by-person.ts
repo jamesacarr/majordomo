@@ -24,7 +24,7 @@ const isDirecting = (credit: CrewCredit): boolean =>
  * media type and TMDB id, ranked by vote count, and capped at
  * `MAX_CANDIDATES`.
  */
-export const findPersonCredits = async (
+export const searchByPerson = async (
   client: Pick<Client, 'personCredits' | 'searchPeople'>,
   {
     mediaType,

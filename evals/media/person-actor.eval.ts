@@ -1,7 +1,7 @@
 import { defineEval } from 'eve/evals';
 import { satisfies } from 'eve/evals/expect';
 
-// Brad Pitt's cast credits in the fixtures that findPersonCredits keeps.
+// Brad Pitt's cast credits in the fixtures that searchByPerson keeps.
 const ACTING = [
   'Fight Club',
   'Se7en',

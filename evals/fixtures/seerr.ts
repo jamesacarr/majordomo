@@ -145,7 +145,7 @@ const alien = movie(
 
 // Credits for the person evals. Brad Pitt's include a talk-show appearance, a
 // one-episode guest spot and a producer-only credit, each with enough votes
-// to rank first if findPersonCredits didn't drop it.
+// to rank first if searchByPerson didn't drop it.
 const se7en = movie(
   807,
   'Se7en',
