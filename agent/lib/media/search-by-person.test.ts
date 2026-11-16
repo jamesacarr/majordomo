@@ -7,7 +7,7 @@ import type {
   PersonResult,
 } from '../seerr/types';
 import { MAX_CANDIDATES, MIN_TV_EPISODES } from './constants';
-import { findPersonCredits } from './find-person-credits';
+import { searchByPerson } from './search-by-person';
 
 const person = (id: number, name: string): PersonResult => ({
   id,
@@ -84,14 +84,14 @@ const clientWith = (
 
 const brad = person(287, 'Brad Pitt');
 
-const ids = (result: Awaited<ReturnType<typeof findPersonCredits>>) =>
+const ids = (result: Awaited<ReturnType<typeof searchByPerson>>) =>
   result.outcome === 'found' ? result.credits.map(c => c.tmdbId) : [];
 
-describe('findPersonCredits', () => {
+describe('searchByPerson', () => {
   it('reports no_person without fetching credits when the search finds nobody', async () => {
     const client = clientWith([]);
 
-    const result = await findPersonCredits(client, { name: 'Zorblax Quimby' });
+    const result = await searchByPerson(client, { name: 'Zorblax Quimby' });
 
     expect(result).toEqual({ outcome: 'no_person' });
     expect(client.creditCalls).toEqual([]);
@@ -102,7 +102,7 @@ describe('findPersonCredits', () => {
       cast: [cast(550, 100)],
     });
 
-    const result = await findPersonCredits(client, { name: 'brad pitt' });
+    const result = await searchByPerson(client, { name: 'brad pitt' });
 
     expect(client.creditCalls).toEqual([287]);
     expect(result).toMatchObject({ name: 'Brad Pitt', outcome: 'found' });
@@ -117,9 +117,9 @@ describe('findPersonCredits', () => {
       ],
     });
 
-    expect(ids(await findPersonCredits(client, { name: 'Brad Pitt' }))).toEqual(
-      [2, 3],
-    );
+    expect(ids(await searchByPerson(client, { name: 'Brad Pitt' }))).toEqual([
+      2, 3,
+    ]);
   });
 
   it(`drops TV directing credits under ${MIN_TV_EPISODES} episodes, keeping longer runs and unknown counts`, async () => {
@@ -133,7 +133,7 @@ describe('findPersonCredits', () => {
 
     expect(
       ids(
-        await findPersonCredits(client, {
+        await searchByPerson(client, {
           name: 'Brad Pitt',
           role: 'directing',
         }),
@@ -148,9 +148,7 @@ describe('findPersonCredits', () => {
     });
 
     expect(
-      ids(
-        await findPersonCredits(client, { name: 'Brad Pitt', role: 'acting' }),
-      ),
+      ids(await searchByPerson(client, { name: 'Brad Pitt', role: 'acting' })),
     ).toEqual([1]);
   });
 
@@ -166,7 +164,7 @@ describe('findPersonCredits', () => {
 
     expect(
       ids(
-        await findPersonCredits(client, {
+        await searchByPerson(client, {
           name: 'Brad Pitt',
           role: 'directing',
         }),
@@ -184,9 +182,9 @@ describe('findPersonCredits', () => {
       ],
     });
 
-    expect(ids(await findPersonCredits(client, { name: 'Brad Pitt' }))).toEqual(
-      [1, 3],
-    );
+    expect(ids(await searchByPerson(client, { name: 'Brad Pitt' }))).toEqual([
+      1, 3,
+    ]);
   });
 
   it('leaves out appearances as themselves but keeps characters that start with Self', async () => {
@@ -199,9 +197,9 @@ describe('findPersonCredits', () => {
       ],
     });
 
-    expect(ids(await findPersonCredits(client, { name: 'Brad Pitt' }))).toEqual(
-      [4],
-    );
+    expect(ids(await searchByPerson(client, { name: 'Brad Pitt' }))).toEqual([
+      4,
+    ]);
   });
 
   it('keeps only the given media type', async () => {
@@ -209,7 +207,7 @@ describe('findPersonCredits', () => {
       cast: [cast(1, 200), tvCast(2, 100)],
     });
 
-    const result = await findPersonCredits(client, {
+    const result = await searchByPerson(client, {
       mediaType: 'tv',
       name: 'Brad Pitt',
     });
@@ -223,7 +221,7 @@ describe('findPersonCredits', () => {
       crew: [crew(13223, 300, 'Director')],
     });
 
-    const result = await findPersonCredits(client, { name: 'Brad Pitt' });
+    const result = await searchByPerson(client, { name: 'Brad Pitt' });
 
     expect(
       result.outcome === 'found' &&
@@ -240,9 +238,9 @@ describe('findPersonCredits', () => {
       crew: [crew(4, 300, 'Director')],
     });
 
-    expect(ids(await findPersonCredits(client, { name: 'Brad Pitt' }))).toEqual(
-      [3, 4, 2, 1],
-    );
+    expect(ids(await searchByPerson(client, { name: 'Brad Pitt' }))).toEqual([
+      3, 4, 2, 1,
+    ]);
   });
 
   it(`returns at most ${MAX_CANDIDATES} credits`, async () => {
@@ -250,7 +248,7 @@ describe('findPersonCredits', () => {
       cast(i + 1, 100),
     );
 
-    const result = await findPersonCredits(clientWith([brad], { cast: many }), {
+    const result = await searchByPerson(clientWith([brad], { cast: many }), {
       name: 'Brad Pitt',
     });
 
@@ -262,16 +260,16 @@ describe('findPersonCredits', () => {
       cast: [cast(550, 100, { mediaInfo: { status: 5, tmdbId: 550 } })],
     });
 
-    expect(
-      await findPersonCredits(client, { name: 'Brad Pitt' }),
-    ).toMatchObject({ credits: [{ availability: 'available', tmdbId: 550 }] });
+    expect(await searchByPerson(client, { name: 'Brad Pitt' })).toMatchObject({
+      credits: [{ availability: 'available', tmdbId: 550 }],
+    });
   });
 
   it('reports the person found with no credits when none match', async () => {
     const client = clientWith([brad], { cast: [cast(1, 100)] });
 
     expect(
-      await findPersonCredits(client, { name: 'Brad Pitt', role: 'directing' }),
+      await searchByPerson(client, { name: 'Brad Pitt', role: 'directing' }),
     ).toEqual({ credits: [], name: 'Brad Pitt', outcome: 'found' });
   });
 });
