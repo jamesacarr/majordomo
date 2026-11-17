@@ -7,7 +7,7 @@
   "engines": {
     "node": "24.x"
   },
-  "packageManager": "pnpm@11.25.0",
+  "packageManager": "pnpm@12.21.0",
   "imports": {
     "#*": "./agent/*",
     "#evals/*": "./evals/*"
@@ -27,22 +27,22 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "ai": "^7.0.143",
+    "ai": "^7.0.173",
     "eve": "^0.81.1",
     "just-bash": "^3.6.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
+    "@biomejs/biome": "^2.6.8",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
     "@commitlint/types": "^21.2.3",
     "@types/node": "24.x",
-    "@vitest/coverage-v8": "^5.0.5",
+    "@vitest/coverage-v8": "^5.1.0",
     "husky": "^9.1.7",
-    "lint-staged": "^17.6.0",
+    "lint-staged": "^17.6.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }
